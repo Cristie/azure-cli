@@ -3,99 +3,174 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.cli.core.commands.arm import cli_generic_update_command
-from azure.cli.core.profiles import supported_api_version, PROFILE_TYPE
-from azure.cli.core.sdk.util import (
-    create_service_adapter,
-    ServiceGroup)
-from ._util import (
-    get_mysql_management_client,
-    get_postgresql_management_client)
+from azure.cli.core.commands import CliCommandType
 
-if not supported_api_version(PROFILE_TYPE, max_api='2017-03-09-profile'):
-    custom_path = 'azure.cli.command_modules.rdbms.custom#{}'
+from azure.cli.command_modules.rdbms._client_factory import (
+    cf_mysql_servers,
+    cf_mysql_db,
+    cf_mysql_firewall_rules,
+    cf_mysql_virtual_network_rules_operations,
+    cf_mysql_config,
+    cf_mysql_log,
+    cf_postgres_servers,
+    cf_postgres_db,
+    cf_postgres_firewall_rules,
+    cf_postgres_virtual_network_rules_operations,
+    cf_postgres_config,
+    cf_postgres_log)
 
-    def load_commands_from_factory(server_type, command_group_name, management_client):
-        # server
-        server_sa = create_service_adapter(
-            'azure.mgmt.rdbms.{}.operations.servers_operations'.format(server_type),
-            'ServersOperations')
 
-        def server_factory(args):
-            return management_client(args).servers
+# pylint: disable=too-many-locals, too-many-statements, line-too-long
+def load_command_table(self, _):
 
-        with ServiceGroup(__name__, server_factory, server_sa, custom_path) as s:
-            with s.group('{} server'.format(command_group_name)) as c:
-                c.command('create', 'create_or_update')
-                c.custom_command('restore', '_server_restore')
-                c.command('delete', 'delete', confirmation=True)
-                c.command('show', 'get')
-                c.custom_command('list', '_server_list_custom_func')
-                c.generic_update_command('update', 'get', 'update',
-                                         custom_func_name='_server_update_custom_func')
+    rdbms_custom = CliCommandType(operations_tmpl='azure.cli.command_modules.rdbms.custom#{}')
 
-        # firewall rule
-        firewall_rule_sa = create_service_adapter(
-            'azure.mgmt.rdbms.{}.operations.firewall_rules_operations'.format(server_type),
-            'FirewallRulesOperations')
+    mysql_servers_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.servers_operations#ServersOperations.{}',
+        client_factory=cf_mysql_servers
+    )
 
-        def firewall_rule_factory(args):
-            return management_client(args).firewall_rules
+    postgres_servers_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.servers_operations#ServersOperations.{}',
+        client_factory=cf_postgres_servers
+    )
 
-        with ServiceGroup(__name__, firewall_rule_factory, firewall_rule_sa, custom_path) as s:
-            with s.group('{} server firewall-rule'.format(command_group_name)) as c:
-                c.command('create', 'create_or_update')
-                c.command('delete', 'delete', confirmation=True)
-                c.command('show', 'get')
-                c.command('list', 'list_by_server')
-        cli_generic_update_command(__name__,
-                                   '{} server firewall-rule update'.format(command_group_name),
-                                   firewall_rule_sa('get'),
-                                   custom_path.format('_firewall_rule_custom_setter'),
-                                   firewall_rule_factory,
-                                   custom_function_op=custom_path.format('_firewall_rule_update_custom_func'))
+    mysql_firewall_rule_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.firewall_rules_operations#FirewallRulesOperations.{}',
+        client_factory=cf_mysql_firewall_rules
+    )
 
-        # configuration
-        configuration_sa = create_service_adapter(
-            'azure.mgmt.rdbms.{}.operations.configurations_operations'.format(server_type),
-            'ConfigurationsOperations')
+    postgres_firewall_rule_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.firewall_rules_operations#FirewallRulesOperations.{}',
+        client_factory=cf_postgres_firewall_rules
+    )
 
-        def configuration_factory(args):
-            return management_client(args).configurations
+    mysql_vnet_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.virtual_network_rules_operations#VirtualNetworkRulesOperations.{}',
+        client_factory=cf_mysql_virtual_network_rules_operations
+    )
 
-        with ServiceGroup(__name__, configuration_factory, configuration_sa) as s:
-            with s.group('{} server configuration'.format(command_group_name)) as c:
-                c.command('set', 'create_or_update')
-                c.command('show', 'get')
-                c.command('list', 'list_by_server')
+    postgres_vnet_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.virtual_network_rules_operations#VirtualNetworkRulesOperations.{}',
+        client_factory=cf_postgres_virtual_network_rules_operations
+    )
 
-        # log_files
-        log_file_sa = create_service_adapter(
-            'azure.mgmt.rdbms.{}.operations.log_files_operations'.format(server_type),
-            'LogFilesOperations')
+    mysql_config_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.configurations_operations#ConfigurationsOperations.{}',
+        client_factory=cf_mysql_config
+    )
 
-        def log_file_factory(args):
-            return management_client(args).log_files
+    postgres_config_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.configurations_operations#ConfigurationsOperations.{}',
+        client_factory=cf_postgres_config
+    )
 
-        with ServiceGroup(__name__, log_file_factory, log_file_sa, custom_path) as s:
-            with s.group('{} server-logs'.format(command_group_name)) as c:
-                c.custom_command('list', '_list_log_files_with_filter')
-                c.custom_command('download', '_download_log_files')
+    mysql_log_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.log_files_operations#LogFilesOperations.{}',
+        client_factory=cf_mysql_log
+    )
 
-        # database
-        database_sa = create_service_adapter(
-            'azure.mgmt.rdbms.{}.operations.databases_operations'.format(server_type),
-            'DatabasesOperations')
+    postgres_log_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.log_files_operations#LogFilesOperations.{}',
+        client_factory=cf_postgres_log
+    )
 
-        def database_factory(args):
-            return management_client(args).databases
+    mysql_db_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.mysql.operations.databases_operations#DatabasesOperations.{}',
+        client_factory=cf_mysql_db
+    )
 
-        with ServiceGroup(__name__, database_factory, database_sa) as s:
-            with s.group('{} db'.format(command_group_name)) as c:
-                # c.command('create', 'create_or_update')
-                # c.command('delete', 'delete', confirmation=True)
-                # c.command('show', 'get')
-                c.command('list', 'list_by_server')
+    postgres_db_sdk = CliCommandType(
+        operations_tmpl='azure.mgmt.rdbms.postgresql.operations.databases_operations#DatabasesOperations.{}',
+        client_factory=cf_postgres_db
+    )
 
-    load_commands_from_factory('mysql', 'mysql', get_mysql_management_client)
-    load_commands_from_factory('postgresql', 'postgres', get_postgresql_management_client)
+    with self.command_group('mysql server', mysql_servers_sdk, client_factory=cf_mysql_servers) as g:
+        g.custom_command('create', '_server_create')
+        g.custom_command('restore', '_server_restore', supports_no_wait=True)
+        g.custom_command('georestore', '_server_georestore', supports_no_wait=True)
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.custom_command('list', '_server_list_custom_func')
+        g.generic_update_command('update',
+                                 getter_name='_server_update_get', getter_type=rdbms_custom,
+                                 setter_name='_server_update_set', setter_type=rdbms_custom, setter_arg_name='parameters',
+                                 custom_func_name='_server_update_custom_func')
+        g.custom_wait_command('wait', '_server_mysql_get')
+
+    with self.command_group('postgres server', postgres_servers_sdk, client_factory=cf_postgres_servers) as g:
+        g.custom_command('create', '_server_create')
+        g.custom_command('restore', '_server_restore', supports_no_wait=True)
+        g.custom_command('georestore', '_server_georestore', supports_no_wait=True)
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.custom_command('list', '_server_list_custom_func')
+        g.generic_update_command('update',
+                                 getter_name='_server_update_get', getter_type=rdbms_custom,
+                                 setter_name='_server_update_set', setter_type=rdbms_custom, setter_arg_name='parameters',
+                                 custom_func_name='_server_update_custom_func')
+        g.custom_wait_command('wait', '_server_postgresql_get')
+
+    with self.command_group('mysql server firewall-rule', mysql_firewall_rule_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+        g.generic_update_command('update',
+                                 getter_name='_firewall_rule_custom_getter', getter_type=rdbms_custom,
+                                 setter_name='_firewall_rule_custom_setter', setter_type=rdbms_custom, setter_arg_name='parameters',
+                                 custom_func_name='_firewall_rule_update_custom_func')
+
+    with self.command_group('postgres server firewall-rule', postgres_firewall_rule_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+        g.generic_update_command('update',
+                                 getter_name='_firewall_rule_custom_getter', getter_type=rdbms_custom,
+                                 setter_name='_firewall_rule_custom_setter', setter_type=rdbms_custom, setter_arg_name='parameters',
+                                 custom_func_name='_firewall_rule_update_custom_func')
+
+    with self.command_group('mysql server vnet-rule', mysql_vnet_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete')
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+        g.generic_update_command('update')
+
+    with self.command_group('postgres server vnet-rule', postgres_vnet_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete')
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+        g.generic_update_command('update')
+
+    with self.command_group('mysql server configuration', mysql_config_sdk) as g:
+        g.command('set', 'create_or_update')
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+
+    with self.command_group('postgres server configuration', postgres_config_sdk) as g:
+        g.command('set', 'create_or_update')
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+
+    with self.command_group('mysql server-logs', mysql_log_sdk, client_factory=cf_mysql_log) as g:
+        g.custom_command('list', '_list_log_files_with_filter')
+        g.custom_command('download', '_download_log_files')
+
+    with self.command_group('postgres server-logs', postgres_log_sdk, client_factory=cf_postgres_log) as g:
+        g.custom_command('list', '_list_log_files_with_filter')
+        g.custom_command('download', '_download_log_files')
+
+    with self.command_group('mysql db', mysql_db_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')
+
+    with self.command_group('postgres db', postgres_db_sdk) as g:
+        g.command('create', 'create_or_update')
+        g.command('delete', 'delete', confirmation=True)
+        g.show_command('show', 'get')
+        g.command('list', 'list_by_server')

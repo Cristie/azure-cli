@@ -21,16 +21,21 @@ CLASSIFIERS = [
     'License :: OSI Approved :: MIT License',
 ]
 
+# Until https://gitlab.com/pycqa/flake8/issues/415 is resolved, pin version of pycodestyle
 DEPENDENCIES = [
     'autopep8>=1.2.4',
     'pylint>=1.7.1'
     'coverage>=4.2',
-    'flake8>=3.2.1',
-    'pycodestyle>=2.2.0',
+    'flake8==3.5.0',
+    'pycodestyle==2.3.1',
     'nose>=1.3.7',
     'readme_renderer>=17.2',
+    'requests',
+    'pyyaml~=4.2b4',
+    'knack',
     'six>=1.10.0',
-    'tabulate>=0.7.7'
+    'tabulate>=0.7.7',
+    'colorama>=0.3.7'
 ]
 
 setup(
@@ -42,22 +47,20 @@ setup(
     author='Microsoft Corporation',
     author_email='azpycli@microsoft.com',
     url='https://github.com/Azure/azure-cli',
-    namespace_packages=[
-    ],
-    scripts=[
-        "scripts/check_style",
-        "scripts/check_style.bat",
-        "scripts/run_tests",
-        "scripts/run_tests.bat",
-        'scripts/azdev',
-        'scripts/azdev.bat'
-    ],
     packages=[
         'automation',
         'automation.style',
         'automation.tests',
         'automation.setup',
-        'automation.coverage'
+        'automation.coverage',
+        'automation.verify'
     ],
+    entry_points={
+        'console_scripts': [
+            'azdev=automation.__main__:main',
+            'check_style=automation.style:legacy_entry',
+            'run_tests=automation.tests:legacy_entry_point'
+        ]
+    },
     install_requires=DEPENDENCIES
 )

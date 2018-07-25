@@ -2,8 +2,38 @@
 
 Release History
 ===============
-2.0.6 (2017-07-07)
-++++++++++++++++++
+
+2.1.4
++++++
+* Minor fixes
+
+2.1.3
+++++++
+* Minor fixes
+
+2.1.2
+++++++
+* Minor fixes
+
+2.1.1
++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+2.1.0
++++++
+* Switch AI upstream feed
+* Introduce extension management property to telemetry data.
+
+2.0.8
++++++
+* Minor fixes.
+
+2.0.7
+++++++
+* Update for CLI core changes.
+
+2.0.6
++++++
 * minor fixes
 
 2.0.5 (2017-06-21)

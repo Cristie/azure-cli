@@ -2,6 +2,36 @@
 
 Release History
 ===============
+
+0.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.0.15
+++++++
+* Minor fixes.
+
+0.0.14
+++++++
+* Minor fixes.
+* `sdist` is now compatible with wheel 0.31.0
+
+0.0.13
+++++++
+* Add `cdn custom-domain enable/disable-https` commands.
+
+0.0.12
+++++++
+* `cdn custom-domain create`: Fixed missing client issue.
+
+0.0.11
+++++++
+* Update for CLI core changes.
+
+0.0.10
+++++++
+* minor fixes
+
 0.0.9 (2017-09-22)
 ++++++++++++++++++
 * minor fixes

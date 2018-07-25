@@ -1,9 +1,10 @@
+# coding=utf-8
 # --------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.cli.core.help_files import helps
+from knack.help_files import helps
 
 
 helps['appservice'] = """
@@ -43,6 +44,41 @@ helps['webapp auth update'] = """
           --facebook-app-id my_fb_id --facebook-app-secret my_fb_secret \\
           --facebook-oauth-scopes public_profile email
 """
+
+helps['webapp identity assign'] = """
+    type: command
+    short-summary: assign or disable managed service identity to the webapp
+    examples:
+        - name: assign local identity and assign a reader role to the current resource group.
+          text: >
+            az webapp identity assign -g MyResourceGroup -n MyUniqueApp --role reader --scope /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/MyResourceGroup
+        - name: enable identity for the webapp.
+          text: >
+            az webapp identity assign -g MyResourceGroup -n MyUniqueApp
+"""
+
+helps['webapp identity'] = """
+    type: group
+    short-summary: manage webapp's managed service identity
+"""
+
+helps['webapp identity show'] = """
+    type: command
+    short-summary: display webapp's managed service identity
+"""
+
+helps['webapp identity remove'] = """
+    type: command
+    short-summary: Disable webapp's managed service identity
+"""
+
+helps['functionapp identity'] = helps['webapp identity'].replace('webapp', 'functionapp')
+
+helps['functionapp identity assign'] = helps['webapp identity assign'].replace('webapp', 'functionapp')
+
+helps['functionapp identity show'] = helps['webapp identity show'].replace('webapp', 'functionapp')
+
+helps['functionapp identity remove'] = helps['webapp identity remove'].replace('webapp', 'functionapp')
 
 helps['webapp config'] = """
 type: group
@@ -88,7 +124,7 @@ type: group
 short-summary: Manage a web app's connection strings.
 """
 
-helps['webapp config connection-string show'] = """
+helps['webapp config connection-string list'] = """
 type: command
 short-summary: Get a web app's connection strings.
 """
@@ -299,6 +335,24 @@ helps['webapp deployment source config-local-git'] = """
                 https://<deploy_user_name>@MyUniqueApp.scm.azurewebsites.net/MyUniqueApp.git
 """
 
+helps['webapp deployment source config-zip'] = """
+    type: command
+    short-summary: Perform deployment using the kudu zip push deployment for a webapp.
+    long-summary: >
+        By default Kudu assumes that zip deployments do not require any build-related actions like
+        npm install or dotnet publish. This can be overridden by including a .deployment file in your
+        zip file with the following content '[config] SCM_DO_BUILD_DURING_DEPLOYMENT = true',
+        to enable Kudu detection logic and build script generation process.
+        See https://github.com/projectkudu/kudu/wiki/Configurable-settings#enabledisable-build-actions-preview.
+        Alternately the setting can be enabled using the az webapp config appsettings set command.
+    examples:
+         - name: Perform deployment by using zip file content.
+           text: >
+             az webapp deployment source config-zip \\
+                 -g <myRG> -n <myAppName> \\
+                 --src <zip file path location>
+"""
+
 helps['webapp deployment source delete'] = """
     type: command
     short-summary: Delete a source control deployment configuration.
@@ -337,6 +391,11 @@ helps['webapp traffic-routing clear'] = """
 helps['appservice plan'] = """
     type: group
     short-summary: Manage app service plans.
+"""
+
+helps['appservice list-locations'] = """
+    type: command
+    short-summary: List regions where a plan sku is available.
 """
 
 helps['appservice plan update'] = """
@@ -474,7 +533,7 @@ helps['webapp list'] = """
     examples:
         - name: List default host name and state for all web apps.
           text: >
-            az webapp list --query "[].{ hostName: defaultHostName, state: state }"
+            az webapp list --query "[].{hostName: defaultHostName, state: state}"
         - name: List all running web apps.
           text: >
             az webapp list --query "[?state=='Running']"
@@ -515,6 +574,11 @@ helps['functionapp create'] = """
             az functionapp create -g MyResourceGroup  -p MyPlan -n MyUniqueAppName -s MyStorageAccount
 """
 
+helps['functionapp update'] = """
+    type: command
+    short-summary: Update a function app.
+"""
+
 helps['functionapp delete'] = """
     type: command
     short-summary: Delete a function app.
@@ -526,7 +590,7 @@ helps['functionapp list'] = """
     examples:
         - name: List default host name and state for all function apps.
           text: >
-            az functionapp list --query "[].{ hostName: defaultHostName, state: state }"
+            az functionapp list --query "[].{hostName: defaultHostName, state: state}"
         - name: List all running function apps.
           text: >
             az functionapp list --query "[?state=='Running']"
@@ -567,7 +631,7 @@ helps['functionapp config appsettings'] = """
     short-summary: Configure function app settings.
 """
 
-helps['functionapp config appsettings show'] = """
+helps['functionapp config appsettings list'] = """
     type: command
     short-summary: Show settings for a function app.
 """
@@ -575,6 +639,11 @@ helps['functionapp config appsettings show'] = """
 helps['functionapp config appsettings set'] = """
     type: command
     short-summary: Update a function app's settings.
+"""
+
+helps['functionapp config appsettings delete'] = """
+    type: command
+    short-summary: Delete a function app's settings.
 """
 
 helps['functionapp config hostname'] = """
@@ -636,6 +705,11 @@ helps['functionapp deployment'] = """
     short-summary: Manage function app deployments.
 """
 
+helps['functionapp deployment list-publishing-profiles'] = """
+    type: command
+    short-summary: Get the details for available function app deployment profiles.
+"""
+
 helps['functionapp deployment source'] = """
     type: group
     short-summary: Manage function app deployment via source control.
@@ -673,6 +747,7 @@ helps['functionapp deployment source sync'] = """
     type: command
     short-summary: Synchronize from the repository. Only needed under manual integration mode.
 """
+
 helps['functionapp deployment user'] = """
     type: group
     short-summary: Manage user credentials for deployment.
@@ -688,4 +763,22 @@ helps['functionapp deployment user set'] = """
           text: >
             az functionapp deployment user set
             --user-name MyUserName
+"""
+
+helps['functionapp deployment source config-zip'] = """
+    type: command
+    short-summary: Perform deployment using the kudu zip push deployment for a function app.
+    long-summary: >
+        By default Kudu assumes that zip deployments do not require any build-related actions like
+        npm install or dotnet publish. This can be overridden by including an .deployment file in your
+        zip file with the following content '[config] SCM_DO_BUILD_DURING_DEPLOYMENT = true',
+        to enable Kudu detection logic and build script generation process.
+        See https://github.com/projectkudu/kudu/wiki/Configurable-settings#enabledisable-build-actions-preview.
+        Alternately the setting can be enabled using the az functionapp config appsettings set command.
+    examples:
+         - name: Perform deployment by using zip file content.
+           text: >
+             az functionapp deployment source config-zip \\
+                 -g <myRG> -n <myAppName> \\
+                 --src <zip file path location>
 """

@@ -2,7 +2,85 @@
 
 Release History
 ===============
-unreleased
+
+2.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* `group deployment delete`: Add `--no-wait` support.
+* `deployment delete`: Add `--no-wait` support.
+* Added `deployment wait` command.
+* Fix issue where the subscription-level `az deployment` commands erroneously appeared for profile 2017-03-09-profile.
+
+2.0.32
+++++++
+* Support deployment at subscription scope: new operation group `deployment`.
+
+2.0.31
+++++++
+* Minor changes
+
+2.0.30
+++++++
+*  add `account management-group` commands.
+
+2.0.29
+++++++
+* Minor changes
+
+
+2.0.28
+++++++
+* Minor changes
+
+2.0.27
+++++++
+* `policy definition create`: Add support for `--metadata`.
+* `policy definition update`: Add support for `--metadata`, `--set`, `--add`, `--remove`.
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.26
+++++++
+provider operation list/show: (breaking change)`api-version` is no longer required to run the command
+
+2.0.25
+++++++
+* Support Autorest 3.0 based SDKs
+
+2.0.24
+++++++
+* `group deployment export`: On failure, command will now output a partial template and any failures.
+
+2.0.23
+++++++
+* feature: bring back 'feature show' command
+
+2.0.22
+++++++
+* `deployment create/validate`: Fix bug where warning was incorrectly displayed when a template 'type' field contained
+                                uppercase values.
+
+2.0.21
+++++++
+* Helpfile changes
+
+2.0.20
+++++++
+* Update for CLI core changes.
+
+2.0.19
+++++++
+* `resource show`: expose `--include-response-body` to show the response body in the output
+
+2.0.18
+++++++
+* --resource parameter, resource-level locks now support resource-ids.
+
+2.0.17
+++++++
+* `group export`: Fixed incompatibility with most recent version of msrest dependency.
+* `az policy assignment create`: policy assignment create command to work with built in policy definitions and policy set definitions.
+
+2.0.16 (2017-10-09)
 +++++++++++++++++++
 * group: permit --resource-group/-g options for resource group name.
 * `account lock`: lock commands to work specifically with subscription level locks
@@ -21,7 +99,7 @@ unreleased
 
 2.0.14 (2017-09-11)
 +++++++++++++++++++
-* Allows passing in resource policy parameter definitions in 'policy definition create', and 'policy definition update'. 
+* Allows passing in resource policy parameter definitions in 'policy definition create', and 'policy definition update'.
 * Allows passing in parameter values for 'policy assignment create'.
 * In all cases params can be provided either via json or file.
 * Incremented API version.

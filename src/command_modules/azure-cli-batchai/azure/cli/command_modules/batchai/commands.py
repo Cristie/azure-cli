@@ -8,39 +8,106 @@
 from azure.cli.command_modules.batchai._client_factory import (
     batchai_client_factory,
     cluster_client_factory,
+    experiment_client_factory,
     job_client_factory,
-    file_client_factory,
-    file_server_client_factory)
+    file_server_client_factory,
+    usage_client_factory,
+    workspace_client_factory)
 from azure.cli.command_modules.batchai._format import (
     cluster_list_table_format,
+    cluster_show_table_format,
+    experiment_list_table_format,
+    experiment_show_table_format,
     job_list_table_format,
+    job_show_table_format,
     file_list_table_format,
-    file_server_table_format,
+    file_server_list_table_format,
+    file_server_show_table_format,
     remote_login_table_format,
-)
-from azure.cli.core.commands import cli_command
+    node_setup_files_list_table_format,
+    usage_table_format,
+    workspace_list_table_format,
+    workspace_show_table_format)
+
+from azure.cli.core.commands import CliCommandType
 
 custom_path = 'azure.cli.command_modules.batchai.custom#{}'
-mgmt_path = 'azure.mgmt.batchai.operations.{}_operations#{}.{}'
 
-cli_command(__name__, 'batchai cluster create', custom_path.format('create_cluster'), batchai_client_factory, no_wait_param='raw')
-cli_command(__name__, 'batchai cluster delete', mgmt_path.format('clusters', 'ClustersOperations', 'delete'), cluster_client_factory, confirmation=True, no_wait_param='raw')
-cli_command(__name__, 'batchai cluster show', mgmt_path.format('clusters', 'ClustersOperations', 'get'), cluster_client_factory)
-cli_command(__name__, 'batchai cluster list', custom_path.format('list_clusters'), cluster_client_factory, table_transformer=cluster_list_table_format)
-cli_command(__name__, 'batchai cluster list-nodes', mgmt_path.format('clusters', 'ClustersOperations', 'list_remote_login_information'), cluster_client_factory, table_transformer=remote_login_table_format)
-cli_command(__name__, 'batchai cluster resize', custom_path.format('resize_cluster'), cluster_client_factory)
-cli_command(__name__, 'batchai cluster auto-scale', custom_path.format('set_cluster_auto_scale_parameters'), cluster_client_factory)
+batchai_workspace_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.workspaces_operations#WorkspacesOperations.{}',
+    client_factory=workspace_client_factory)
 
-cli_command(__name__, 'batchai job create', custom_path.format('create_job'), batchai_client_factory, no_wait_param='raw')
-cli_command(__name__, 'batchai job delete', mgmt_path.format('jobs', 'JobsOperations', 'delete'), job_client_factory, confirmation=True, no_wait_param='raw')
-cli_command(__name__, 'batchai job terminate', mgmt_path.format('jobs', 'JobsOperations', 'terminate'), job_client_factory, no_wait_param='raw')
-cli_command(__name__, 'batchai job show', mgmt_path.format('jobs', 'JobsOperations', 'get'), job_client_factory)
-cli_command(__name__, 'batchai job list', custom_path.format('list_jobs'), job_client_factory, table_transformer=job_list_table_format)
-cli_command(__name__, 'batchai job list-nodes', mgmt_path.format('jobs', 'JobsOperations', 'list_remote_login_information'), job_client_factory, table_transformer=remote_login_table_format)
-cli_command(__name__, 'batchai job list-files', custom_path.format('list_files'), file_client_factory, table_transformer=file_list_table_format)
-cli_command(__name__, 'batchai job stream-file', custom_path.format('tail_file'), file_client_factory)
+batchai_cluster_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.clusters_operations#ClustersOperations.{}',
+    client_factory=cluster_client_factory)
 
-cli_command(__name__, 'batchai file-server create', custom_path.format('create_file_server'), file_server_client_factory, no_wait_param='raw')
-cli_command(__name__, 'batchai file-server delete', mgmt_path.format('file_servers', 'FileServersOperations', 'delete'), file_server_client_factory, confirmation=True, no_wait_param='raw')
-cli_command(__name__, 'batchai file-server show', mgmt_path.format('file_servers', 'FileServersOperations', 'get'), file_server_client_factory)
-cli_command(__name__, 'batchai file-server list', custom_path.format('list_file_servers'), file_server_client_factory, table_transformer=file_server_table_format)
+batchai_experiment_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.experiments_operations#ExperimentsOperations.{}',
+    client_factory=workspace_client_factory)
+
+batchai_job_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.jobs_operations#JobsOperations.{}',
+    client_factory=job_client_factory)
+
+batchai_server_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.file_servers_operations#FileServersOperations.{}',
+    client_factory=file_server_client_factory)
+
+batchai_usage_sdk = CliCommandType(
+    operations_tmpl='azure.mgmt.batchai.operations.usages_operations#UsagesOperations.{}',
+    client_factory=usage_client_factory)
+
+
+def load_command_table(self, _):
+
+    with self.command_group('batchai workspace', batchai_workspace_sdk, client_factory=workspace_client_factory) as g:
+        g.custom_command('create', 'create_workspace')
+        g.show_command('show', 'get', table_transformer=workspace_show_table_format)
+        g.custom_command('list', 'list_workspaces', table_transformer=workspace_list_table_format)
+        g.command('delete', 'delete', supports_no_wait=True, confirmation=True)
+
+    with self.command_group('batchai cluster', batchai_cluster_sdk, client_factory=cluster_client_factory) as g:
+        g.custom_command('create', 'create_cluster', client_factory=batchai_client_factory)
+        g.command('delete', 'delete', supports_no_wait=True, confirmation=True)
+        g.show_command('show', 'get', table_transformer=cluster_show_table_format)
+        g.custom_command('list', 'list_clusters', table_transformer=cluster_list_table_format)
+        g.custom_command('resize', 'resize_cluster')
+        g.custom_command('auto-scale', 'set_cluster_auto_scale_parameters')
+
+    with self.command_group('batchai cluster node', batchai_cluster_sdk, client_factory=cluster_client_factory) as g:
+        g.command('list', 'list_remote_login_information', table_transformer=remote_login_table_format)
+        g.custom_command('exec', 'exec_on_node')
+
+    with self.command_group('batchai cluster file', batchai_cluster_sdk, client_factory=cluster_client_factory) as g:
+        g.custom_command('list', 'list_node_setup_files', table_transformer=node_setup_files_list_table_format)
+
+    with self.command_group('batchai experiment', batchai_experiment_sdk, client_factory=experiment_client_factory) as g:
+        g.command('create', 'create')
+        g.show_command('show', 'get', table_transformer=experiment_show_table_format)
+        g.command('list', 'list_by_workspace', table_transformer=experiment_list_table_format)
+        g.command('delete', 'delete', supports_no_wait=True, confirmation=True)
+
+    with self.command_group('batchai job', batchai_job_sdk, client_factory=job_client_factory) as g:
+        g.custom_command('create', 'create_job', client_factory=batchai_client_factory)
+        g.command('delete', 'delete', supports_no_wait=True, confirmation=True)
+        g.command('terminate', 'terminate', supports_no_wait=True, confirmation=True)
+        g.show_command('show', 'get', table_transformer=job_show_table_format)
+        g.command('list', 'list_by_experiment', table_transformer=job_list_table_format)
+        g.custom_command('wait', 'wait_for_job_completion', client_factory=batchai_client_factory)
+
+    with self.command_group('batchai job file', batchai_job_sdk, client_factory=job_client_factory) as g:
+        g.custom_command('list', 'list_files', table_transformer=file_list_table_format)
+        g.custom_command('stream', 'tail_file')
+
+    with self.command_group('batchai job node', batchai_job_sdk, client_factory=job_client_factory) as g:
+        g.command('list', 'list_remote_login_information', table_transformer=remote_login_table_format)
+        g.custom_command('exec', 'exec_on_job_node', client_factory=batchai_client_factory)
+
+    with self.command_group('batchai file-server', batchai_server_sdk, client_factory=file_server_client_factory) as g:
+        g.custom_command('create', 'create_file_server', no_wait_param='raw', client_factory=batchai_client_factory)
+        g.command('delete', 'delete', supports_no_wait=True, confirmation=True)
+        g.show_command('show', 'get', table_transformer=file_server_show_table_format)
+        g.command('list', 'list_by_workspace', table_transformer=file_server_list_table_format)
+
+    with self.command_group('batchai', batchai_usage_sdk, client_factory=usage_client_factory) as g:
+        g.command('list-usages', 'list', table_transformer=usage_table_format)

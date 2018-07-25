@@ -3,7 +3,7 @@
 Release History
 ===============
 
-unreleased
-++++++++++
+0.0.1
++++++
 
 * Initial release of module.

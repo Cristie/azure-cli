@@ -3,10 +3,108 @@
 Release History
 ===============
 
-Unreleased
+2.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* Fixed 'The provided resource group name ... did not match the name in the Url' error when specifying elastic pool name for `sql db copy` and `sql db replica create` commands.
+* Allow configuring default sql server by executing `az configure --defaults sql-server=<name>`.
+* Implemented table formatters for 'sql server', 'sql server firewall-rule', 'sql list-usages', and 'sql show-usage' commands. Use '-o table' to format output as a table.
+
+2.0.28
+++++++
+* Minor fixes.
+
+2.0.27
+++++++
+* Added new Managed instance and Managed database CRUD commands.
+    * Managed instance commands:
+        * az sql mi create
+        * az sql mi show
+        * az sql mi list
+        * az sql mi update
+        * az sql mi delete
+
+    * Managed database commands:
+        * az sql midb create
+        * az sql midb show
+        * az sql midb list
+        * az sql midb restore
+        * az sql midb delete
+* Fixed confusing error when running `az sql db list-editions` for a location that is not available to your subscription.
+
+2.0.26
+++++++
+* BREAKING CHANGES: Updated database, data warehouse, and elastic pool commands to use Azure-standard SKU properties for configuring performance level. This has resulted in some changes to the respose objects returned from db, dw, and elastic-pool commands.
+    * Database & data warehouse respose objects:
+        * "serviceLevelObjective" property renamed to "currentServiceObjectiveName"
+        * "currentServiceObjectiveId" and "requestedServiceObjectiveId" properties removed
+        * "requestedServiceObjectiveName" property is now readonly. To update service objective, use --service-objective parameter or set sku.name property.
+        * "edition" property is now readonly. To update edition, use --edition parameter or set sku.tier property.
+        * "elasticPoolName" property is now readonly. To update elastic pool, use --elastic-pool parameter or set elasticPoolId property.
+        * "maxSizeBytes" property is now an integer value instead of a string.
+    * Elastic pool respose objects:
+      * "edition", "dtu", "databaseDtuMin", and "databaseDtuMax" properties are now readonly. To update, use --edition, --capacity, --db-max-capacity, and --db-min-capacity parameters respectively.
+* Database, data warehouse, and elastic pool create and update commands now accept parameters to set the family (i.e. compute generation) and capacity (i.e. scale) aspects of performance level. Capacity can be used to set the scale of DTU-based editions (e.g. Basic, Standard, Premium), and family & capacity can be used to set the scale of vcore-based editions (e.g. GeneralPurpose and BusinessCritical).
+* Database, data warehouse, and elastic pool commands now have table formatters (for use with `-o table`) which provide a more compact view of their major properties.
+
+2.0.25
+++++++
+* Use new release azure-mgmt-sql 0.8.6 SDK Python package
+* Added az sql elastic-pool op list and az sql elastic-pool op cancel, Support list and cancel azure sql elastic pool operations
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.24
+++++++
+* Minor fixes
+
+2.0.23
+++++++
+* Support Autorest 3.0 based SDKs
+
+2.0.22
+++++++
+* Added zone redundancy support for databases and elastic pools on creation and update.
+
+2.0.21
+++++++
+* Added az sql server dns-alias commands.
+
+2.0.20
+++++++
+* Added az sql db rename
+* Support `--ids` argument for db, dw, server, elastic-pool, and server firewall-rule commands.
+
+2.0.19
+++++++
+* Updated helpfile
+
+2.0.18
+++++++
+* Update for CLI core changes.
+
+2.0.17
+++++++
+* Update managed storage SDK dependency
+
+2.0.16
+++++++
+* Added az sql db list-usages and az sql db show-usage commands.
+* Added sql server conn-policy show/update commands.
+
+2.0.15
+++++++
+* Added --ignore-missing-vnet-service-endpoint param to az sql server vnet-rule create and update commands
+* Minor fixes.
+
+2.0.14
+++++++
+* Minor fixes
+
+2.0.13 (2017-10-09)
 +++++++++++++++++++
 * Adding support for SQL Transparent Data Encryption (TDE) and TDE with Bring Your Own Key
 * Added az sql db list-deleted command and az sql db restore --deleted-time parameter, allowing the ability to find and restore deleted databases.
+* Added az sql db op list and az sql db op cancel, allowing the ability to list and cancel in-progress operations on database.
 
 2.0.12 (2017-09-22)
 +++++++++++++++++++

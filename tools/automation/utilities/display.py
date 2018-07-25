@@ -5,6 +5,18 @@
 
 from __future__ import print_function
 
+import sys
+
+
+def display(txt):
+    """ Output to stderr """
+    print(txt, file=sys.stderr)
+
+
+def output(txt):
+    """ Output to stdout """
+    print(txt, file=sys.stdout)
+
 
 def get_print_format(records):
     """Find the best format to display the given list of records in table format"""
@@ -50,4 +62,6 @@ def print_records(records, print_format=None, title=None, foot_notes=None):
 
 
 def print_heading(heading, f=None):
-    print('{0}\n{1}\n{0}'.format('=' * len(heading), heading), file=f)
+    lines = heading.splitlines()
+    header_len = max(len(l) for l in lines)
+    print('{0}\n{1}\n{0}'.format('=' * header_len, heading), file=f)

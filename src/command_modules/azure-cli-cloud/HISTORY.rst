@@ -2,6 +2,39 @@
 
 Release History
 ===============
+
+2.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+2.0.15
+++++++
+* Add acr login server suffix to cloud config.
+
+2.0.14
+++++++
+* Minor fixes
+
+2.0.13
+++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.12
+++++++
+* Performance fixes.
+
+2.0.11
+++++++
+* Bug fix: Do not require endpoints to be specified when setting --profile for a cloud.
+
+2.0.10
+++++++
+* `az cloud register` & `az cloud update`: Prevent users from registering clouds that have missing required endpoints
+
+2.0.9
++++++
+* minor fixes
+
 2.0.8 (2017-09-22)
 ++++++++++++++++++
 * minor fixes

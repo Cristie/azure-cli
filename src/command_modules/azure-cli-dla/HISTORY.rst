@@ -2,6 +2,49 @@
 
 Release History
 ===============
+
+0.2.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.1.1
+++++++
+* Minor fixes.
+
+0.1.0
++++++
+* Minor fixes.
+
+0.0.19
+++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+0.0.18
+++++++
+* Performance fixes.
+
+0.0.17
+++++++
+* Update helpfile
+  
+0.0.16
+++++++
+* Update for CLI core changes.
+
+0.0.15
+++++++
+* Change the return type of the job list command: a list of JobInformation to a list of JobInformationBasic
+* Change the return type of the account list command: a list of DataLakeAnalyticsAccount to a list of DataLakeAnalyticsAccountBasic
+* The properties of a Basic type is a strict subset of the properties of a regular type
+
+0.0.14
+++++++
+* Minor fixes.
+
+0.0.13
+++++++
+* minor fixes
+
 0.0.12 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

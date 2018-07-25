@@ -2,6 +2,36 @@
 
 Release History
 ===============
+
+0.2.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.1.14
+++++++
+* Minor fixes.
+
+0.1.13
+++++++
+* Fix typo with example for `az cognitiveservices account create` [#5603](https://github.com/Azure/azure-cli/issues/5603)
+
+0.1.12
+++++++
+
+* `sdist` is now compatible with wheel 0.31.0
+
+0.1.11
+++++++
+* Update the 'notice' of creating a new Cognitive Service account.
+
+0.1.10
+++++++
+* Update for CLI core changes.
+
+0.1.9
++++++
+* minor fixes
+
 0.1.8 (2017-09-22)
 ++++++++++++++++++
 * minor fixes

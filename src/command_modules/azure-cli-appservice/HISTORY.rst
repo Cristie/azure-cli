@@ -2,9 +2,109 @@
 
 Release History
 ===============
-unreleased
-++++++++++
+
+0.2.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* appservice: allow PremiumV2 skus
+
+0.1.36
+++++++
+* webapp/functionapp: Adding support for disabling identity az webapp identity remove. Preview tag removed for Identity feature.
+
+0.1.35
+++++++
+* dependencies: remove the cap on the urllib as newer requests was released
+* functionapp create: support to use appservice plan from external resource groups
+
+0.1.34
+++++++
+* dependencies: cap the urllib to 1.22 to avoid conflit with requests 2.18.4
+
+0.1.33
+++++++
+* webapp/functionapp: improve generic update commands
+* webapp/functionapp: webapp deployment source config-zip supports async operation with status updates for long running operation 
+
+0.1.32
+++++++
+* webapp: fix a bug in `az webapp delete` when `--slot` is provided
+* webapp: remove `--runtime-version` from `az webapp auth update` as it's not very public ready
+* webapp: az webapp config set support for min_tls_version & https2.0
+* webapp: az webapp create support for multicontainers
+
+0.1.31
+++++++
+* (Breaking change): remove `assign-identity` which was tagged `deprecating` 2 releases ago
+* webapp: capture the unhandled exception if the appservice plan doesn't exist
+* `sdist` is now compatible with wheel 0.31.0
+
+0.1.30
+++++++
+* webapp: az webapp update supports httpsOnly
+* webapp/functionapp:  slot support for identity assign & identity show
+
+0.1.29
+++++++
+* webapp/functionapp: author managed identity commands `identity assign/show`, and deprecate `assign-identity`
+
+0.1.28
+++++++
+* webapp: updating tests/code for sdk update
+
+0.1.27
+++++++
+* appservice: list-location: Fixes the bug where 'Free' was reported as an invalid SKU
+
+0.1.26
+++++++
+* webapp backup/restore: Fix issue where restore command fails because of a null reference
+* appservice: support default app service plan through `az configure --defaults appserviceplan=my-asp`
+
+0.1.25
+++++++
+* fix broken webapp log tail/download
+* relieve the 'kind' check on webapp/functionapp
+
+0.1.24
+++++++
+* `webapp config ssl upload`: fix a bug where the hosting_environment_profile was null
+* `webapp browse`: adding support for browse to handle custom domain URL
+* `webapp log tail`: fixing a bug where support for slots was not working
+
+0.1.23
+++++++
+* Minor fixes.
+
+0.1.22
+++++++
+* Minor fixes.
+* `webapp config ssl upload`: fix a bug where the hosting_environment_profile was null
+
+0.1.21
+++++++
+* `webapp config ssl upload`: fix a bug in the cert name generation
+* `webapp/functionapp`: ensure list/show display correct set of apps
+* webapp: set WEBSITE_NODE_DEFAULT_VERSION in case where runtime is not set
+
+0.1.20
+++++++
+* webapp: add deployment source config-zip support for webapps and functions apps
+* webapp: use azure-mgmt-web 0.34.1
+* webapp: add --docker-container-logging
+* webapp: removing the 'storage' option from --web-server-logging since this is not working
+* `deployment user set`: logged more informative error messages.
+* functionapp: add support for creating Linux function apps
+* appservice: fix list-locations
+
+0.1.19
+++++++
+* webapp: fix a bug that downloaded log file might be invalid
+
+0.1.18 (2017-10-09)
++++++++++++++++++++
 * webapp: added generic update with new command: 'az webapp update'
+* webapp: updating tests/code for sdk update
 
 0.1.17 (2017-09-22)
 +++++++++++++++++++

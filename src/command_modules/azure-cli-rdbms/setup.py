@@ -12,7 +12,7 @@ except ImportError:
     logger.warn("Wheel is not available, disabling bdist_wheel hook")
     cmdclass = {}
 
-VERSION = "0.0.7+dev"
+VERSION = "0.3.0"
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',
     'Intended Audience :: Developers',
@@ -23,12 +23,13 @@ CLASSIFIERS = [
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
+    'Programming Language :: Python :: 3.6',
     'License :: OSI Approved :: MIT License',
 ]
 
 DEPENDENCIES = [
     'azure-cli-core',
-    'azure-mgmt-rdbms==0.1.0',
+    'azure-mgmt-rdbms==1.2.0',
     'six'
 ]
 

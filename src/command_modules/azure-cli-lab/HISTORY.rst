@@ -2,6 +2,59 @@
 
 Release History
 ===============
+
+0.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.0.23
+++++++
+* Minor fixes.
+
+0.0.22
+++++++
+* Fix regression from knack conversion that replaced table_transformers with transforms.
+
+0.0.21
+++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+0.0.20
+++++++
+* Fixed create enviorment.
+
+0.0.19
+++++++
+* Minor fixes.
+
+0.0.18
+++++++
+* Minor fixes.
+
+0.0.17
+++++++
+* Minor fixes.
+
+0.0.16
+++++++
+* Performance fixes.
+
+0.0.15
+++++++
+* Update helpfile
+
+0.0.14
+++++++
+* Update for CLI core changes.
+
+0.0.13
+++++++
+* Minor fixes.
+
+0.0.12
+++++++
+* minor fixes
+
 0.0.11 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

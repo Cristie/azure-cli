@@ -11,20 +11,26 @@ except ImportError:
 
 from json import loads
 import requests
+from msrest.http_logger import log_request, log_response
 
-import azure.cli.core.azlogging as azlogging
-from azure.cli.core.util import CLIError
-from azure.cli.core.prompting import prompt, prompt_pass, NoTTYException
+from knack.util import CLIError
+from knack.prompting import prompt, prompt_pass, NoTTYException
+from knack.log import get_logger
 
+from azure.cli.core.util import should_disable_connection_verify
+
+from ._client_factory import cf_acr_registries
 from ._constants import MANAGED_REGISTRY_SKU
 from ._utils import get_registry_by_name
-from .credential import acr_credential_show
 
 
-logger = azlogging.get_az_logger(__name__)
+logger = get_logger(__name__)
 
 
-def _get_aad_token(login_server, only_refresh_token, repository=None, permission='*'):
+ACCESS_TOKEN_PERMISSION = ['*', 'pull']
+
+
+def _get_aad_token(cli_ctx, login_server, only_refresh_token, repository=None, permission=None):
     """Obtains refresh and access tokens for an AAD-enabled registry.
     :param str login_server: The registry login server URL to log in to
     :param bool only_refresh_token: Whether to ask for only refresh token, or for both refresh and access tokens
@@ -33,7 +39,7 @@ def _get_aad_token(login_server, only_refresh_token, repository=None, permission
     """
     login_server = login_server.rstrip('/')
 
-    challenge = requests.get('https://' + login_server + '/v2/')
+    challenge = requests.get('https://' + login_server + '/v2/', verify=(not should_disable_connection_verify()))
     if challenge.status_code not in [401] or 'WWW-Authenticate' not in challenge.headers:
         raise CLIError("Registry '{}' did not issue a challenge.".format(login_server))
 
@@ -52,36 +58,19 @@ def _get_aad_token(login_server, only_refresh_token, repository=None, permission
     authhost = urlunparse((authurl[0], authurl[1], '/oauth2/exchange', '', '', ''))
 
     from azure.cli.core._profile import Profile
-    profile = Profile()
-    sp_id, refresh, access, tenant = profile.get_refresh_token()
+    profile = Profile(cli_ctx=cli_ctx)
+    creds, _, tenant = profile.get_raw_token()
 
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    if not sp_id:
-        if not refresh:
-            content = {
-                'grant_type': 'access_token',
-                'service': params['service'],
-                'tenant': tenant,
-                'access_token': access
-            }
-        else:
-            content = {
-                'grant_type': 'access_token_refresh_token',
-                'service': params['service'],
-                'tenant': tenant,
-                'access_token': access,
-                'refresh_token': refresh
-            }
-    else:
-        content = {
-            'grant_type': 'spn',
-            'service': params['service'],
-            'tenant': tenant,
-            'username': sp_id,
-            'password': refresh
-        }
+    content = {
+        'grant_type': 'access_token',
+        'service': params['service'],
+        'tenant': tenant,
+        'access_token': creds[1]
+    }
 
-    response = requests.post(authhost, urlencode(content), headers=headers)
+    response = requests.post(authhost, urlencode(content), headers=headers,
+                             verify=(not should_disable_connection_verify()))
 
     if response.status_code not in [200]:
         raise CLIError(
@@ -105,19 +94,21 @@ def _get_aad_token(login_server, only_refresh_token, repository=None, permission
         'scope': scope,
         'refresh_token': refresh_token
     }
-    response = requests.post(authhost, urlencode(content), headers=headers)
+    response = requests.post(authhost, urlencode(content), headers=headers,
+                             verify=(not should_disable_connection_verify()))
     access_token = loads(response.content.decode("utf-8"))["access_token"]
 
     return access_token
 
 
-def _get_credentials(registry_name,
+def _get_credentials(cli_ctx,
+                     registry_name,
                      resource_group_name,
                      username,
                      password,
                      only_refresh_token,
                      repository=None,
-                     permission='*'):
+                     permission=None):
     """Try to get AAD authorization tokens or admin user credentials.
     :param str registry_name: The name of container registry
     :param str resource_group_name: The name of resource group
@@ -127,7 +118,7 @@ def _get_credentials(registry_name,
     :param str repository: Repository for which the access token is requested
     :param str permission: The requested permission on the repository, '*' or 'pull'
     """
-    registry, _ = get_registry_by_name(registry_name, resource_group_name)
+    registry, resource_group_name = get_registry_by_name(cli_ctx, registry_name, resource_group_name)
     login_server = registry.login_server
 
     # 1. if username was specified, verify that password was also specified
@@ -143,16 +134,16 @@ def _get_credentials(registry_name,
     # 2. if we don't yet have credentials, attempt to get a refresh token
     if not password and registry.sku.name in MANAGED_REGISTRY_SKU:
         try:
-            username = "00000000-0000-0000-0000-000000000000" if only_refresh_token else None
-            password = _get_aad_token(login_server, only_refresh_token, repository, permission)
+            username = '00000000-0000-0000-0000-000000000000' if only_refresh_token else None
+            password = _get_aad_token(cli_ctx, login_server, only_refresh_token, repository, permission)
             return login_server, username, password
         except CLIError as e:
             logger.warning("Unable to get AAD authorization tokens with message: %s", str(e))
 
     # 3. if we still don't have credentials, attempt to get the admin credentials (if enabled)
-    if not password:
+    if not password and registry.admin_user_enabled:
         try:
-            cred = acr_credential_show(registry_name)
+            cred = cf_acr_registries(cli_ctx).list_credentials(resource_group_name, registry_name)
             username = cred.username
             password = cred.passwords[0].value
             return login_server, username, password
@@ -170,30 +161,35 @@ def _get_credentials(registry_name,
                 'Unable to authenticate using AAD or admin login credentials. ' +
                 'Please specify both username and password in non-interactive mode.')
 
+    return login_server, None, None
 
-def get_login_credentials(registry_name,
-                          resource_group_name,
-                          username,
-                          password):
+
+def get_login_credentials(cli_ctx,
+                          registry_name,
+                          resource_group_name=None,
+                          username=None,
+                          password=None):
     """Try to get AAD authorization tokens or admin user credentials to log into a registry.
     :param str registry_name: The name of container registry
     :param str resource_group_name: The name of resource group
     :param str username: The username used to log into the container registry
     :param str password: The password used to log into the container registry
     """
-    return _get_credentials(registry_name,
+    return _get_credentials(cli_ctx,
+                            registry_name,
                             resource_group_name,
                             username,
                             password,
                             only_refresh_token=True)
 
 
-def get_access_credentials(registry_name,
-                           resource_group_name,
-                           username,
-                           password,
+def get_access_credentials(cli_ctx,
+                           registry_name,
+                           resource_group_name=None,
+                           username=None,
+                           password=None,
                            repository=None,
-                           permission='*'):
+                           permission=None):
     """Try to get AAD authorization tokens or admin user credentials to access a registry.
     :param str registry_name: The name of container registry
     :param str resource_group_name: The name of resource group
@@ -202,10 +198,28 @@ def get_access_credentials(registry_name,
     :param str repository: Repository for which the access token is requested
     :param str permission: The requested permission on the repository, '*' or 'pull'
     """
-    return _get_credentials(registry_name,
+    if repository and permission not in ACCESS_TOKEN_PERMISSION:
+        raise ValueError("Permission is required for a repository. Allowed access token permission: {}".format(
+            ACCESS_TOKEN_PERMISSION))
+
+    return _get_credentials(cli_ctx,
+                            registry_name,
                             resource_group_name,
                             username,
                             password,
                             only_refresh_token=False,
                             repository=repository,
                             permission=permission)
+
+
+def log_registry_response(response):
+    """Log the HTTP request and response of a registry API call.
+    :param Response response: The response object
+    """
+    log_request(None, response.request)
+    log_response(None, response.request, response, result=response)
+
+
+def get_login_server_suffix(cli_ctx):
+    """Get the Azure Container Registry login server suffix in the current cloud."""
+    return cli_ctx.cloud.suffixes.acr_login_server_endpoint

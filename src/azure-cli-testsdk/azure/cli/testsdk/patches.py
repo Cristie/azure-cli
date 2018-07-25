@@ -19,8 +19,6 @@ def patch_progress_controller(unit_test):
         unit_test, 'azure.cli.core.commands.progress.ProgressHook.add', _mock_pass)
     mock_in_unit_test(
         unit_test, 'azure.cli.core.commands.progress.ProgressHook.end', _mock_pass)
-    mock_in_unit_test(
-        unit_test, 'azure.cli.command_modules.storage.custom._update_progress', _mock_pass)
 
 
 def patch_main_exception_handler(unit_test):
@@ -34,7 +32,7 @@ def patch_main_exception_handler(unit_test):
 
         raise CliExecutionError(ex)
 
-    mock_in_unit_test(unit_test, 'azure.cli.main.handle_exception', _handle_main_exception)
+    mock_in_unit_test(unit_test, 'azure.cli.core.util.handle_exception', _handle_main_exception)
 
 
 def patch_load_cached_subscriptions(unit_test):
@@ -71,6 +69,9 @@ def patch_long_run_operation_delay(unit_test):
 
     mock_in_unit_test(unit_test,
                       'msrestazure.azure_operation.AzureOperationPoller._delay',
+                      _shortcut_long_run_operation)
+    mock_in_unit_test(unit_test,
+                      'msrestazure.polling.arm_polling.ARMPolling._delay',
                       _shortcut_long_run_operation)
     mock_in_unit_test(unit_test,
                       'azure.cli.core.commands.LongRunningOperation._delay',

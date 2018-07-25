@@ -2,6 +2,94 @@
 
 Release History
 ===============
+
+2.1.0
++++++
+* BREAKING CHANGE: Update '--no-push' to a pure flag in 'acr build' command.
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* Add 'show' and 'update' commands under 'acr repository' group.
+* Add '--detail' flag for 'show-manifests' and 'show-tags' to show more detailed information.
+* Add '--image' parameter to support get build details or logs by an image.
+
+2.0.28
+++++++
+* Add polling build status.
+* Allow case-insensitive enum values.
+* Add --top and --orderby parameters for show-manifests.
+
+2.0.27
+++++++
+* Add 'azure-storage-blob' as dependency.
+* Use 2 cores as the default CPU configuration in 'acr build-task create' command.
+
+2.0.26
+++++++
+* Allow VSTS as a remote source location
+* Add 'acr import' command.
+
+2.0.25
+++++++
+* Improve manifest delete confirmation on tags
+
+2.0.24
+++++++
+* Add ACR Build commands.
+* Improve resource not found error messages.
+* Improve resource creation performance and error handling.
+* Improve acr login in non-standard consoles and WSL.
+* Improve repository commands error messages.
+* Update table columns and ordering.
+
+2.0.23
+++++++
+* Improve error handling of wincred fallback.
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.22
+++++++
+* Improve repository delete command with --image parameter to support docker image format.
+* Deprecate --manifest and --tag parameters in repository delete command.
+* Add acr repository untag command to remove a tag without deleting data.
+
+2.0.21
+++++++
+* Minor fixes
+
+2.0.20
+++++++
+* minor fix
+
+2.0.19
+++++++
+* Add acr login fallback on wincred errors.
+* Minor fixes, enable registry logs.
+
+2.0.18
+++++++
+* Update for CLI core changes.
+
+2.0.17
+++++++
+* Update managed storage SDK dependency
+
+2.0.16
+++++++
+* Documentation fixes.
+
+2.0.15
+++++++
+* Add creating webhooks in replication regions.
+
+2.0.14
+++++++
+* All resource management now points to 2017-10-01 api-version.
+* Bring your own storage SKU is now Classic.
+* Managed registry SKUs are now Basic, Standard, and Premium.
+
+2.0.13 (2017-10-09)
++++++++++++++++++++
+* minor fixes
+
 2.0.12 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

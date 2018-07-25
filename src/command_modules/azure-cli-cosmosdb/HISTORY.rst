@@ -2,6 +2,48 @@
 
 Release History
 ===============
+
+0.2.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.1.22
+++++++
+* Minor fixes.
+
+0.1.21
+++++++
+* Introducing VNET support for Azure CLI - Cosmos DB
+
+0.1.20
+++++++
+* Minor fixes
+* `sdist` is now compatible with wheel 0.31.0
+
+0.1.19
+++++++
+* Added support for setting capabilities and minor fixes.
+
+0.1.18
+++++++
+* Minor fixes
+
+0.1.17
+++++++
+* Fix parameter description for failover policies.
+
+0.1.16
+++++++
+* Update for CLI core changes.
+
+0.1.15
+++++++
+* Use latest azure-mgmt-cosmosdb pypi package (0.2.1)
+
+0.1.14
+++++++
+* minor fixes
+
 0.1.13 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

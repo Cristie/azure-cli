@@ -2,6 +2,79 @@
 
 Release History
 ===============
+
+2.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+2.0.27
+++++++
+* Minor fixes.
+
+2.0.26
+++++++
+* Minor fixes.
+
+2.0.25
+++++++
+* ad: remove stack traces from graph exceptions before surface to users
+* ad sp create: do not throw if CLI can't resolve app id
+
+2.0.25
+++++++
+* Minor fixes.
+
+2.0.24
+++++++
+* ad app update: add generic update support
+
+2.0.23
+++++++
+* BREAKING CHANGE: remove deprecated `az ad sp reset-credentials`
+* Minor fixes.
+
+2.0.22
+++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.21
+++++++
+* graph: support required access configuration and native client 
+* rbac: ensure collection has less than 1000 ids on resolving graph objects
+* ad sp: new commands to manage credentials "az ad sp credential reset/list/delete"
+* role assignments: (breaking change)list/show output has "properties" removed to align with SDK
+* role definition: support `dataActions` and `notDataActions`
+
+2.0.20
+++++++
+* role assignments: expose "role assignment list-changelogs" for rbac audit 
+
+2.0.18
+++++++
+* ad app update: expose "--available-to-other-tenants"
+
+2.0.17
+++++++
+* role assignment: expose --assignee-object-id to bypass graph query
+
+2.0.16
+++++++
+* Update for CLI core changes.
+
+2.0.15
+++++++
+* `role assignment list`: show default assignments for classic administrators
+* `ad sp reset-credentials`: support to add credentials instead of overwriting
+* `create-for-rbac`: emit out an actionable error if provisioning application failed for lack of permissions
+
+2.0.14
+++++++
+* minor fixes
+
+2.0.13 (2017-10-09)
++++++++++++++++++++
+* minor fixes
+
 2.0.12 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

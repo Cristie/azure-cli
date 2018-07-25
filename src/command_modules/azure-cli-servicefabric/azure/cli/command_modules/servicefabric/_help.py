@@ -1,9 +1,10 @@
+# coding=utf-8
 # --------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.cli.core.help_files import helps  # pylint: disable=unused-import
+from knack.help_files import helps  # pylint: disable=unused-import
 
 # pylint: disable=line-too-long
 
@@ -78,11 +79,11 @@ helps["sf cluster create"] = """
     examples:
         - name: Create a cluster with a given size and self-signed certificate that is downloaded locally.
           text: >
-            az sf cluster create -g group-name -n cluster1 -l westus -size 4 --vm-password Password#1234 --certificate-output-folder MyCertificates
+            az sf cluster create -g group-name -n cluster1 -l westus --cluster-size 4 --vm-password Password#1234 --certificate-output-folder MyCertificates --certificate-subject-name cluster1
         - name: Use a keyvault certificate and custom template to deploy a cluster.
           text: >
             az sf cluster create -g group-name -n cluster1 -l westus --template-file template.json \\
-                --parameter-file parameter.json --secret-identifier https://{MyKeyVault}.vault.azure.net:443/secrets/{MyCertificate}
+                --parameter-file parameter.json --secret-identifier https://{KeyVault}.vault.azure.net:443/secrets/{MyCertificate}
 
 """
 
@@ -93,7 +94,7 @@ helps["sf cluster certificate add"] = """
         - name: Add a certificate to a  cluster using a keyvault secret identifier.
           text: |
             az sf cluster certificate add -g group-name -n cluster1 \\
-                --secret-identifier 'https://{MyKeyVault}.vault.azure.net/secrets/{MySecret}
+                --secret-identifier 'https://{KeyVault}.vault.azure.net/secrets/{Secret}
         - name: Add a self-signed certificate to a cluster.
           text: >
              az sf cluster certificate add -g group-name -n cluster1 --certificate-subject-name test.com
@@ -207,7 +208,6 @@ helps["sf cluster upgrade-type set"] = """
         - name: Set a cluster to use the 'Automatic' upgrade mode.
           text: >
             az sf cluster upgrade-type set -g group-name -n cluster1 --upgrade-mode Automatic
-
 """
 
 helps["sf application certificate add"] = """
@@ -216,6 +216,5 @@ helps["sf application certificate add"] = """
     examples:
         - name: Add an application certificate.
           text: >
-            az sf cluster application certificate add -g group-name -n cluster1  --secret-identifier 'https://{KeyVault}.vault.azure.net/secrets/{MySecret}'
-
+            az sf cluster application certificate add -g group-name -n cluster1  --secret-identifier 'https://{KeyVault}.vault.azure.net/secrets/{Secret}'
 """

@@ -2,8 +2,71 @@
 
 Release History
 ===============
-unreleased
-++++++++++
+
+2.2.0
++++++
+* REVERT: adding commands for managing storage accounts and sas-definitions
+* REVERT: adding commands for network-rules
+* REVERT: adding id parameter to secret, key, and certificate operations
+
+2.1.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* adding commands for managing storage accounts and sas-definitions
+* adding commands for network-rules
+* adding id parameter to secret, key, and certificate operations
+
+2.0.24
+++++++
+* Minor fixes
+
+2.0.23
+++++++
+* Minor fixes.
+
+2.0.22
+++++++
+* make keyvault commands work in cloud shell or vms with identity
+
+2.0.21
+++++++
+* Minor fixes.
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.20
+++++++
+* Support Autorest 3.0 based SDKs
+
+2.0.19
+++++++
+* Minor fixes.
+
+2.0.18
+++++++
+* Minor fixes.
+
+2.0.17
+++++++
+* Minor fixes.
+
+2.0.16
+++++++
+* Update for CLI core changes.
+
+2.0.15
+++++++
+* Minor fixes.
+
+2.0.14
+++++++
+* Minor fixes.
+
+2.0.13
+++++++
+* minor fixes
+
+2.0.12 (2017-10-09)
++++++++++++++++++++
 * Fixed Key Vault authentication issue when using ADFS on Azure Stack. https://github.com/Azure/azure-cli/issues/4448
 
 2.0.11 (2017-09-22)

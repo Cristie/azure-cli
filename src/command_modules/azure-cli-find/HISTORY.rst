@@ -2,8 +2,29 @@
 
 Release History
 ===============
-0.2.7 (2017-09-22)
-++++++++++++++++++
+
+0.2.12
+++++++
+* Minor fixes
+
+0.2.11
+++++++
+* Minor fixes
+
+0.2.10
+++++++
+* Minor fixes
+
+0.2.9
+++++++
+* `sdist` is now compatible with wheel 0.31.0
+
+0.2.8
+++++++
+* Update for CLI core changes.
+
+0.2.7
++++++
 * minor fixes
 
 0.2.6 (2017-07-07)

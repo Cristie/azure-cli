@@ -2,10 +2,9 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Integrated Terminal/Console",
+            "name": "Azure CLI Debug (Integrated Console)",
             "type": "python",
             "request": "launch",
-            "stopOnEntry": true,
             "pythonPath": "${config:python.pythonPath}",
             "program": "${workspaceRoot}/src/azure-cli/azure/cli/__main__.py",
             "cwd": "${workspaceRoot}",
@@ -15,11 +14,12 @@
             "console": "integratedTerminal",
             "debugOptions": [
                 "WaitOnAbnormalExit",
-                "WaitOnNormalExit"
+                "WaitOnNormalExit",
+                "RedirectOutput"
             ]
         },
         {
-            "name": "External Terminal/Console",
+            "name": "Azure CLI Debug (External Console)",
             "type": "python",
             "request": "launch",
             "stopOnEntry": true,
@@ -33,6 +33,23 @@
             "debugOptions": [
                 "WaitOnAbnormalExit",
                 "WaitOnNormalExit"
+            ]
+        },
+        {
+            "name": "Azdev Scripts",
+            "type": "python",
+            "request": "launch",
+            "pythonPath": "${config:python.pythonPath}",
+            "program": "${workspaceRoot}/tools/automation/__main__.py",
+            "cwd": "${workspaceRoot}",
+            "args": [
+                "--help"
+            ],
+            "console": "integratedTerminal",
+            "debugOptions": [
+                "WaitOnAbnormalExit",
+                "WaitOnNormalExit",
+                "RedirectOutput"
             ]
         }
     ]

@@ -100,22 +100,6 @@ def transform_vpn_connection(result):
     return result
 
 
-def transform_vpn_connection_create_output(result):
-    from azure.cli.core.commands import DeploymentOutputLongRunningOperation
-    from msrest.pipeline import ClientRawResponse
-    from msrestazure.azure_operation import AzureOperationPoller
-    if isinstance(result, AzureOperationPoller):
-        # normally returns a LRO poller
-        result = DeploymentOutputLongRunningOperation('Starting network vpn-connection create')(result)
-        return result['resource']
-    elif isinstance(result, ClientRawResponse):
-        # returns a raw response if --no-wait used
-        return
-
-    # returns a plain response (not a poller) if --validate used
-    return result
-
-
 def transform_vnet_create_output(result):
     return {'newVNet': result.result()}
 
@@ -129,15 +113,36 @@ def transform_traffic_manager_create_output(result):
 
 
 def transform_nic_create_output(result):
-    return {'NewNIC': result.result()}
+    if result:
+        return {'NewNIC': result.result()}
+    return None
 
 
 def transform_nsg_create_output(result):
     return {'NewNSG': result.result()}
 
 
+def transform_nsg_rule_table_output(result):
+    item = OrderedDict()
+    item['Name'] = result['name']
+    item['ResourceGroup'] = result['resourceGroup']
+    item['Priority'] = result['priority']
+    item['SourcePortRanges'] = result['sourcePortRange'] or ' '.join(result['sourcePortRanges'])
+    item['SourceAddressPrefixes'] = result['sourceAddressPrefix'] or ' '.join(result['sourceAddressPrefixes'])
+    item['SourceASG'] = result['sourceApplicationSecurityGroups'] or 'None'
+    item['Access'] = result['access']
+    item['Protocol'] = result['protocol']
+    item['Direction'] = result['direction']
+    item['DestinationPortRanges'] = result['destinationPortRange'] or ' '.join(result['destinationPortRanges'])
+    item['DestinationAddressPrefixes'] = result['destinationAddressPrefix'] or \
+        ' '.join(result['destinationAddressPrefixes'])
+    item['DestinationASG'] = result['destinationApplicationSecurityGroups'] or 'None'
+    return item
+
+
 def transform_vnet_gateway_create_output(result):
-    return {'vnetGateway': result.result()}
+    result = {'vnetGateway': result.result()} if result else result
+    return result
 
 
 def transform_geographic_hierachy_table_output(result):

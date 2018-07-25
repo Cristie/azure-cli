@@ -9,6 +9,7 @@ Commands to manage Azure container instances
         az container: Manage Azure Container Instances.
 
     Commands:
+        attach: Attach local standard output and error streams to a container in a container group.
         create: Create a container group.
         delete: Delete a container group.
         list  : List container groups.
@@ -30,8 +31,8 @@ Commands to create an Azure container group
         --command-line                : The command line to run when the container is started, e.g.
                                         '/bin/bash -c myscript.sh'.
         --cpu                         : The required number of CPU cores of the containers.  Default: 1.
-        --environment-variables -e    : A list of environment variable for the container. Space
-                                        separated values in 'key=value' format.
+        --environment-variables -e    : A list of environment variable for the container.
+                                        Space-separated values in 'key=value' format.
         --ip-address                  : The IP address type of the container group.  Allowed values:
                                         Public.
         --location -l                 : Location. You can configure the default location using `az
@@ -45,6 +46,11 @@ Commands to create an Azure container group
         --registry-login-server       : The container image registry login server.
         --registry-password           : The password to log in container image registry server.
         --registry-username           : The username to log in container image registry server.
+
+    Log Analytics Arguments
+        --log-analytics-workspace       : The Log Analytics workspace name or id. If a name is
+                                        specified, use the --subscription flag to set the subscription if not current.
+        --log-analytics-workspace-key   : The Log Analytics workspace key.
 
     Global Arguments
         --debug                       : Increase logging verbosity to show all debug logs.
@@ -68,6 +74,10 @@ Commands to create an Azure container group
             az container create -g MyResourceGroup --name MyAlpine --image alpine:latest --ip-address
             public
 
+        Create a container in a container group with public IP address and UDP port.
+            az container create -g MyResourceGroup --name myapp --image myimage:latest --ip-address
+            public --ports 8081 --protocol UDP
+
         Create a container group with starting command line.
             az container create -g MyResourceGroup --name MyAlpine --image alpine:latest --command-line
             "/bin/sh -c '/path to/myscript.sh'"
@@ -85,6 +95,28 @@ Commands to create an Azure container group
             1.5 --registry-login-server myregistry.com --registry-username username --registry-password
             password
 
+        Create a container in a container group that mounts an Azure File share as volume.
+            az container create -g MyResourceGroup --name myapp --image myimage:latest --command-line
+            "cat /mnt/azfile/myfile" --azure-file-volume-share-name myshare --azure-file-volume-account-
+            name mystorageaccount --azure-file-volume-account-key mystoragekey --azure-file-volume-
+            mount-path /mnt/azfile
+
+        Create a container in a container group that mounts a git repo as volume.
+            az container create -g MyResourceGroup --name myapp --image myimage:latest --command-line
+            "cat /mnt/gitrepo" --gitrepo-url https://github.com/user/myrepo.git --gitrepo-dir ./dir1
+            --gitrepo-mount-path /mnt/gitrepo
+
+        Create a container in a container group using a yaml file.
+            az container create -g MyResourceGroup -f containerGroup.yaml
+
+        Create a container group using Log Analytics from a workspace name.
+            az container create -g MyResourceGroup --name myapp --log-analytics-workspace myworkspace
+
+        Create a container group using Log Analytics from a workspace id and key.
+            az container create -g MyResourceGroup --name myapp --log-analytics-workspace workspaceid
+            --log-analytics-workspace-key workspacekey
+
+
 Commands to get an Azure container group
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ::
@@ -95,7 +127,7 @@ Commands to get an Azure container group
     Arguments
 
     Resource Id Arguments
-        --ids              : One or more resource IDs (space delimited). If provided, no other 'Resource
+        --ids              : One or more resource IDs (space-delimited). If provided, no other 'Resource
                             Id' arguments should be specified.
         --name -n          : The name of the container group.
         --resource-group -g: Name of resource group. You can configure the default group using `az
@@ -120,7 +152,7 @@ Commands to tail the logs of a Azure container group
         --container-name   : The container name to tail the logs.
 
     Resource Id Arguments
-        --ids              : One or more resource IDs (space delimited). If provided, no other 'Resource
+        --ids              : One or more resource IDs (space-delimited). If provided, no other 'Resource
                             Id' arguments should be specified.
         --name -n          : The name of the container group.
         --resource-group -g: Name of resource group. You can configure the default group using `az
@@ -145,7 +177,7 @@ Commands to delete an Azure container group
         --yes -y           : Do not prompt for confirmation.
 
     Resource Id Arguments
-        --ids              : One or more resource IDs (space delimited). If provided, no other 'Resource
+        --ids              : One or more resource IDs (space-delimited). If provided, no other 'Resource
                             Id' arguments should be specified.
         --name -n          : The name of the container group.
         --resource-group -g: Name of resource group. You can configure the default group using `az
@@ -167,6 +199,73 @@ Commands to list Azure container groups by resource group
         az container list: List container groups.
 
     Arguments
+        --resource-group -g: Name of resource group. You can configure the default group using `az
+                            configure --defaults group=<name>`.
+
+    Global Arguments
+        --debug            : Increase logging verbosity to show all debug logs.
+        --help -h          : Show this help message and exit.
+        --output -o        : Output format.  Allowed values: json, jsonc, table, tsv.  Default: json.
+        --query            : JMESPath query string. See http://jmespath.org/ for more information and
+                            examples.
+        --verbose          : Increase logging verbosity. Use --debug for full debug logs.
+
+
+Commands to execute a command in a running container
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+::
+
+    Command
+        az container exec: Execute a command from within a running container of a container group.
+            The most common use case is to open an interactive bash shell. See examples below. This
+            command is currently not supported for Windows machines.
+
+    Arguments
+        --exec-command [Required]: The command to run from within the container.
+        --container-name         : The container name where to execute the command. Can be ommitted for
+                                container groups with only one container.
+        --terminal-col-size      : The col size for the command output.  Default: 80.
+        --terminal-row-size      : The row size for the command output.  Default: 20.
+
+    Resource Id Arguments
+        --ids                    : One or more resource IDs (space-delimited). If provided, no other
+                                'Resource Id' arguments should be specified.
+        --name -n                : The name of the container group.
+        --resource-group -g      : Name of resource group. You can configure the default group using `az
+                                configure --defaults group=<name>`.
+
+    Global Arguments
+        --debug                  : Increase logging verbosity to show all debug logs.
+        --help -h                : Show this help message and exit.
+        --output -o              : Output format.  Allowed values: json, jsonc, table, tsv.  Default:
+                                json.
+        --query                  : JMESPath query string. See http://jmespath.org/ for more information
+                                and examples.
+        --subscription           : Name or ID of subscription. You can configure the default
+                                subscription using `az account set -s NAME_OR_ID`".
+        --verbose                : Increase logging verbosity. Use --debug for full debug logs.
+
+    Examples
+        Stream a shell from within an nginx container.
+            az container exec -g MyResourceGroup --name mynginx --container-name nginx --exec-command
+            "/bin/bash"
+
+Commands to attach to a container in a container group
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+::
+
+    Command
+        az container attach: Attach local standard output and error streams to a container in a
+        container group.
+
+    Arguments
+        --container-name   : The container to attach to. If omitted, the first container in the
+                            container group will be chosen.
+
+    Resource Id Arguments
+        --ids              : One or more resource IDs (space delimited). If provided, no other 'Resource
+                            Id' arguments should be specified.
+        --name -n          : The name of the container group.
         --resource-group -g: Name of resource group. You can configure the default group using `az
                             configure --defaults group=<name>`.
 

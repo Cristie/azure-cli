@@ -1,9 +1,10 @@
+# coding=utf-8
 # --------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.cli.core.help_files import helps
+from knack.help_files import helps
 
 
 helps['dla'] = """
@@ -25,7 +26,7 @@ helps['dla job submit'] = """
           short-summary: Name for the submitted job.
         - name: --script
           type: string
-          short-summary: Script to submit. This may be an @{file} to load from a file.
+          short-summary: Script to submit. This may be '@{file}' to load from a file.
         - name: --runtime-version
           short-summary: The runtime version to use.
           long-summary: This parameter is used for explicitly overwriting the default runtime. It should only be done if you know what you are doing.
@@ -291,6 +292,16 @@ helps['dla account delete'] = """
 helps['dla account blob-storage'] = """
     type: group
     short-summary: (PREVIEW) Manage links between Data Lake Analytics accounts and Azure Storage.
+"""
+
+helps['dla account blob-storage add'] = """
+    type: command
+    short-summary: Links an Azure Storage account to the specified Data Lake Analytics account.
+"""
+
+helps['dla account blob-storage update'] = """
+    type: command
+    short-summary: Updates an Azure Storage account linked to the specified Data Lake Analytics account.
 """
 
 helps['dla account data-lake-store'] = """

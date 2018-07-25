@@ -5,6 +5,7 @@ __pycache__/
 # Virtual environment
 env/
 env27/
+venv/
 .python-version
 
 # PTVS analysis
@@ -14,7 +15,8 @@ env27/
 obj/
 dist/
 MANIFEST
-packaged_releases/windows/out
+build_scripts/windows/out
+cli-build-*/
 
 # Result of running python setup.py install/pip install -e
 RECORD.txt
@@ -23,6 +25,7 @@ build/
 
 # Test results
 TestResults/
+test_failures.txt
 
 # Credentials 
 credentials_real.json
@@ -91,3 +94,10 @@ artifacts/
 
 # Python version
 .python-version
+
+# Pytest
+.cache/
+.pytest_cache/
+
+
+az_command_coverage.txt

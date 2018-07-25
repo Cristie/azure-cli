@@ -32,7 +32,7 @@ Known limitations:
     * PTR records must have a non-empty name
     * currently only supports the following:
     '$ORIGIN', '$TTL', 'SOA', 'NS', 'A', 'AAAA', 'CNAME', 'MX', 'PTR',
-    'TXT', 'SRV', 'SPF', 'URI'
+    'TXT', 'SRV', 'SPF', 'URI', 'CAA'
 """
 
 import copy
@@ -42,13 +42,14 @@ import argparse
 from collections import OrderedDict
 import re
 
-import azure.cli.core.azlogging as azlogging
-from azure.cli.core.util import CLIError
+from knack.log import get_logger
+from knack.util import CLIError
 
 from azure.cli.command_modules.network.zone_file.configs import SUPPORTED_RECORDS
 from azure.cli.command_modules.network.zone_file.exceptions import InvalidLineException
 
-logger = azlogging.get_az_logger(__name__)
+logger = get_logger(__name__)
+
 semicolon_regex = re.compile(r'(?:"[^"]*")*[^\\](;.*)')
 date_regex_dict = {
     'w': {'regex': re.compile(r'(\d*w)'), 'scale': 86400 * 7},
@@ -120,6 +121,7 @@ def _make_parser():
     _make_record_parser(parsers, 'NS', [('ttl', str, '?'), ('DELIM', str), ('host', str)])
     _make_record_parser(parsers, 'A', [('ttl', str, '?'), ('DELIM', str), ('ip', str)])
     _make_record_parser(parsers, 'AAAA', [('ttl', str, '?'), ('DELIM', str), ('ip', str)])
+    _make_record_parser(parsers, 'CAA', [('ttl', str, '?'), ('DELIM', str), ('flags', int), ('tag', str), ('value', str)])
     _make_record_parser(parsers, 'CNAME', [('ttl', str, '?'), ('DELIM', str), ('alias', str)])
     _make_record_parser(parsers, 'MX', [('ttl', str, '?'), ('DELIM', str), ('preference', str), ('host', str)])
     _make_record_parser(parsers, 'TXT', [('ttl', str), ('DELIM', str), ('txt', str, '+')])
@@ -155,19 +157,26 @@ def _tokenize_line(line, quote_strings=False, infer_name=True):
                 # end of token
                 if len(tokbuf) > 0:
                     ret.append(tokbuf)
-
                 tokbuf = ''
+
+            elif escape:
+                # escaped space (can be inside or outside of quote)
+                tokbuf += '\\' + c
+                escape = False
+
             elif quote:
                 # in quotes
                 tokbuf += c
-            elif escape:
-                # escaped space
-                tokbuf += c
-                escape = False
+
             else:
                 tokbuf = ''
         elif c == '\\':
-            escape = True
+            if escape:
+                # escape of an escape is valid part of the line sequence
+                tokbuf += '\\\\'
+                escape = False
+            else:
+                escape = True
         elif c == '"':
             if not escape:
                 if quote:
@@ -188,6 +197,10 @@ def _tokenize_line(line, quote_strings=False, infer_name=True):
                 escape = False
         else:
             # normal character
+            if escape:
+                # append escape character
+                tokbuf += '\\'
+
             tokbuf += c
             escape = False
         firstchar = False
@@ -220,6 +233,7 @@ def _find_comment_index(line):
                 quote = not quote
         elif char == ';':
             if quote:
+                escape = False
                 continue
             elif escape:
                 escape = False
@@ -238,15 +252,11 @@ def _serialize(tokens):
     """
     Serialize tokens:
     * quote whitespace-containing tokens
-    * escape semicolons
     """
     ret = []
     for tok in tokens:
         if " " in tok:
             tok = '"%s"' % tok
-
-        if ";" in tok:
-            tok = tok.replace(";", "\;")
 
         ret.append(tok)
 
@@ -284,9 +294,9 @@ def _flatten(text):
 
     # tokens: sequence of non-whitespace separated by '' where a newline was
     tokens = []
-    for l in (x for x in lines if len(x) > 0):
-        l = l.replace('\t', ' ')
-        tokens += _tokenize_line(l, quote_strings=True, infer_name=False)
+    for line in (x for x in lines if len(x) > 0):
+        line = line.replace('\t', ' ')
+        tokens += _tokenize_line(line, quote_strings=True, infer_name=False)
         tokens.append(SENTINEL)
 
     # find (...) and turn it into a single line ("capture" it)
@@ -376,14 +386,14 @@ def _parse_record(parser, record_token):
     record_type = None
     for i in range(3):
         try:
-            if record_token[i] in SUPPORTED_RECORDS:
-                record_type = record_token[i]
+            if record_token[i].upper() in SUPPORTED_RECORDS:
+                record_type = record_token[i].upper()
                 break
         except KeyError:
             break
 
     if not record_type:
-        from azure.cli.core.util import CLIError
+        from knack.util import CLIError
         raise CLIError('Unable to determine record type: {}'.format(' '.join(record_token)))
 
     # move the record type to the front of the token list so it will conform to argparse
@@ -479,7 +489,6 @@ def _post_process_txt_record(record, current_ttl):
         record['txt'] = [record['txt']]
     record['ttl'] = _convert_to_seconds(record['ttl']) if 'ttl' in record else current_ttl
     long_text = ''.join(x for x in record['txt']) if isinstance(record['txt'], list) else record['txt']
-    long_text = long_text.replace('\\', '')
     original_len = len(long_text)
     record['txt'] = []
     while len(long_text) > 255:

@@ -3,10 +3,16 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-ACR_RESOURCE_PROVIDER = 'Microsoft.ContainerRegistry'
-ACR_RESOURCE_TYPE = ACR_RESOURCE_PROVIDER + '/registries'
+from azure.mgmt.containerregistry.v2018_02_01_preview.models import SkuName
+
 STORAGE_RESOURCE_TYPE = 'Microsoft.Storage/storageAccounts'
-WEBHOOK_RESOURCE_TYPE = ACR_RESOURCE_TYPE + '/webhooks'
-WEBHOOK_API_VERSION = '2017-06-01-preview'
-MANAGED_REGISTRY_API_VERSION = '2017-06-01-preview'
-MANAGED_REGISTRY_SKU = ['Managed_Basic', 'Managed_Standard', 'Managed_Premium']
+
+ACR_RESOURCE_PROVIDER = 'Microsoft.ContainerRegistry'
+REGISTRY_RESOURCE_TYPE = ACR_RESOURCE_PROVIDER + '/registries'
+WEBHOOK_RESOURCE_TYPE = REGISTRY_RESOURCE_TYPE + '/webhooks'
+REPLICATION_RESOURCE_TYPE = REGISTRY_RESOURCE_TYPE + '/replications'
+BUILD_TASK_RESOURCE_TYPE = REGISTRY_RESOURCE_TYPE + '/buildTasks'
+BUILD_STEP_RESOURCE_TYPE = BUILD_TASK_RESOURCE_TYPE + '/steps'
+
+CLASSIC_REGISTRY_SKU = [SkuName.classic.value]
+MANAGED_REGISTRY_SKU = [SkuName.basic.value, SkuName.standard.value, SkuName.premium.value]

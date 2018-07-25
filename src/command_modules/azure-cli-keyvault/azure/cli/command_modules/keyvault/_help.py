@@ -1,14 +1,15 @@
+# coding=utf-8
 # --------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.cli.core.help_files import helps
+from knack.help_files import helps
 
 
 helps['keyvault'] = """
     type: group
-    short-summary: Safeguard and maintain control of keys, secrets, and certificates.
+    short-summary: Manage KeyVault keys, secrets, and certificates.
 """
 
 helps['keyvault create'] = """
@@ -59,6 +60,7 @@ helps['keyvault certificate'] = """
 """
 
 helps['keyvault certificate download'] = """
+    type: command
     short-summary: Download the public portion of a Key Vault certificate.
     long-summary: The certificate formatted as either PEM or DER. PEM is the default.
     examples:
@@ -100,7 +102,7 @@ helps['keyvault certificate create'] = """
             secrets=$(az keyvault secret list-versions --vault-name vaultname \\
               -n cert1 --query "[?attributes.enabled].id" -o tsv)
 
-            vm_secrets=$(az vm format-secret -s "$secrets") \n
+            vm_secrets=$(az vm secret format -s "$secrets") \n
 
             az vm create -g group-name -n vm-name --admin-username deploy  \\
               --image debian --secrets "$vm_secrets"
@@ -124,7 +126,7 @@ helps['keyvault certificate import'] = """
             secrets=$(az keyvault secret list-versions --vault-name vaultname \\
               -n cert1 --query "[?attributes.enabled].id" -o tsv)
 
-            vm_secrets=$(az vm format-secret -s "$secrets") \n
+            vm_secrets=$(az vm secret format -s "$secrets") \n
 
             az vm create -g group-name -n vm-name --admin-username deploy  \\
               --image debian --secrets "$vm_secrets"

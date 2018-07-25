@@ -6,31 +6,35 @@
 # pylint:disable=too-many-lines
 
 import os
-import re
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse  # pylint: disable=import-error
 
-from msrestazure.azure_exceptions import CloudError
+from knack.log import get_logger
+from knack.util import CLIError
 
-from azure.mgmt.keyvault import KeyVaultManagementClient
-import azure.cli.core.azlogging as azlogging
-from azure.cli.core.commands.arm import resource_id, parse_resource_id, is_valid_resource_id
-from azure.cli.core.commands.validators import \
-    (get_default_location_from_resource_group, validate_file_or_dict, validate_parameter_set)
-from azure.cli.core.util import CLIError, hash_string
-from azure.cli.command_modules.vm._vm_utils import check_existence
+from azure.cli.core.commands.validators import (
+    get_default_location_from_resource_group, validate_file_or_dict, validate_parameter_set, validate_tags)
+from azure.cli.core.util import hash_string
+from azure.cli.command_modules.vm._vm_utils import check_existence, get_target_network_api, get_storage_blob_uri
 from azure.cli.command_modules.vm._template_builder import StorageProfile
 import azure.cli.core.keys as keys
+
 from ._client_factory import _compute_client_factory
+from ._actions import _get_latest_image_version
+logger = get_logger(__name__)
 
-logger = azlogging.get_az_logger(__name__)
 
-
-def validate_asg_names_or_ids(namespace):
-    from azure.cli.core.profiles import get_sdk, ResourceType
+def validate_asg_names_or_ids(cmd, namespace):
+    from msrestazure.tools import resource_id, is_valid_resource_id
+    from azure.cli.core.profiles import ResourceType
     from azure.cli.core.commands.client_factory import get_subscription_id
-    ApplicationSecurityGroup = get_sdk(ResourceType.MGMT_NETWORK, 'ApplicationSecurityGroup', mod='models')
+    ApplicationSecurityGroup = cmd.get_models('ApplicationSecurityGroup',
+                                              resource_type=ResourceType.MGMT_NETWORK)
 
     resource_group = namespace.resource_group_name
-    subscription_id = get_subscription_id()
+    subscription_id = get_subscription_id(cmd.cli_ctx)
     names_or_ids = getattr(namespace, 'application_security_groups')
     ids = []
 
@@ -49,24 +53,48 @@ def validate_asg_names_or_ids(namespace):
     setattr(namespace, 'application_security_groups', ids)
 
 
-def validate_nsg_name(namespace):
+def validate_nsg_name(cmd, namespace):
+    from msrestazure.tools import resource_id
     from azure.cli.core.commands.client_factory import get_subscription_id
     vm_id = resource_id(name=namespace.vm_name, resource_group=namespace.resource_group_name,
                         namespace='Microsoft.Compute', type='virtualMachines',
-                        subscription=get_subscription_id())
+                        subscription=get_subscription_id(cmd.cli_ctx))
     namespace.network_security_group_name = namespace.network_security_group_name \
         or '{}_NSG_{}'.format(namespace.vm_name, hash_string(vm_id, length=8))
 
 
-def _get_resource_group_from_vault_name(vault_name):
+def validate_keyvault(cmd, namespace):
+    namespace.keyvault = _get_resource_id(cmd.cli_ctx, namespace.keyvault, namespace.resource_group_name,
+                                          'vaults', 'Microsoft.KeyVault')
+
+
+def process_vm_secret_format(cmd, namespace):
+    from msrestazure.tools import is_valid_resource_id
+
+    keyvault_usage = CLIError('usage error: [--keyvault NAME --resource-group NAME | --keyvault ID]')
+    kv = namespace.keyvault
+    rg = namespace.resource_group_name
+
+    if rg:
+        if not kv or is_valid_resource_id(kv):
+            raise keyvault_usage
+        validate_keyvault(cmd, namespace)
+    else:
+        if kv and not is_valid_resource_id(kv):
+            raise keyvault_usage
+
+
+def _get_resource_group_from_vault_name(cli_ctx, vault_name):
     """
     Fetch resource group from vault name
     :param str vault_name: name of the key vault
     :return: resource group name or None
     :rtype: str
     """
+    from azure.mgmt.keyvault import KeyVaultManagementClient
     from azure.cli.core.commands.client_factory import get_mgmt_service_client
-    client = get_mgmt_service_client(KeyVaultManagementClient).vaults
+    from msrestazure.tools import parse_resource_id
+    client = get_mgmt_service_client(cli_ctx, KeyVaultManagementClient).vaults
     for vault in client.list():
         id_comps = parse_resource_id(vault.id)
         if id_comps['name'] == vault_name:
@@ -74,34 +102,43 @@ def _get_resource_group_from_vault_name(vault_name):
     return None
 
 
-def _get_resource_id(val, resource_group, resource_type, resource_namespace):
+def _get_resource_id(cli_ctx, val, resource_group, resource_type, resource_namespace):
+    from msrestazure.tools import resource_id, is_valid_resource_id
     from azure.cli.core.commands.client_factory import get_subscription_id
     if is_valid_resource_id(val):
         return val
 
-    return resource_id(name=val, resource_group=resource_group, namespace=resource_namespace, type=resource_type,
-                       subscription=get_subscription_id())
+    kwargs = {
+        'name': val,
+        'resource_group': resource_group,
+        'namespace': resource_namespace,
+        'type': resource_type,
+        'subscription': get_subscription_id(cli_ctx)
+    }
+    missing_kwargs = {k: v for k, v in kwargs.items() if not v}
+
+    return resource_id(**kwargs) if not missing_kwargs else None
 
 
-def _get_nic_id(val, resource_group):
-    return _get_resource_id(val, resource_group,
+def _get_nic_id(cli_ctx, val, resource_group):
+    return _get_resource_id(cli_ctx, val, resource_group,
                             'networkInterfaces', 'Microsoft.Network')
 
 
-def validate_vm_nic(namespace):
-    namespace.nic = _get_nic_id(namespace.nic, namespace.resource_group_name)
+def validate_vm_nic(cmd, namespace):
+    namespace.nic = _get_nic_id(cmd.cli_ctx, namespace.nic, namespace.resource_group_name)
 
 
-def validate_vm_nics(namespace):
+def validate_vm_nics(cmd, namespace):
     rg = namespace.resource_group_name
     nic_ids = []
 
     for n in namespace.nics:
-        nic_ids.append(_get_nic_id(n, rg))
+        nic_ids.append(_get_nic_id(cmd.cli_ctx, n, rg))
     namespace.nics = nic_ids
 
     if hasattr(namespace, 'primary_nic') and namespace.primary_nic:
-        namespace.primary_nic = _get_nic_id(namespace.primary_nic, rg)
+        namespace.primary_nic = _get_nic_id(cmd.cli_ctx, namespace.primary_nic, rg)
 
 
 def _validate_secrets(secrets, os_type):
@@ -157,16 +194,42 @@ def _validate_secrets(secrets, os_type):
 
 # region VM Create Validators
 
-def _parse_image_argument(namespace):
+
+def _parse_image_argument(cmd, namespace):
     """ Systematically determines what type is supplied for the --image parameter. Updates the
         namespace and returns the type for subsequent processing. """
-    # 1 - easy check for URI
-    if namespace.image.lower().endswith('.vhd'):
+    from msrestazure.tools import is_valid_resource_id
+    from msrestazure.azure_exceptions import CloudError
+    import re
+
+    # 1 - check if a fully-qualified ID (assumes it is an image ID)
+    if is_valid_resource_id(namespace.image):
+        return 'image_id'
+
+    # 2 - attempt to match an URN pattern
+    urn_match = re.match('([^:]*):([^:]*):([^:]*):([^:]*)', namespace.image)
+    if urn_match:
+        namespace.os_publisher = urn_match.group(1)
+        namespace.os_offer = urn_match.group(2)
+        namespace.os_sku = urn_match.group(3)
+        namespace.os_version = urn_match.group(4)
+
+        if not any([namespace.plan_name, namespace.plan_product, namespace.plan_publisher]):
+            image_plan = _get_image_plan_info_if_exists(cmd, namespace)
+            if image_plan:
+                namespace.plan_name = image_plan.name
+                namespace.plan_product = image_plan.product
+                namespace.plan_publisher = image_plan.publisher
+
+        return 'urn'
+
+    # 3 - unmanaged vhd based images?
+    if urlparse(namespace.image).scheme:
         return 'uri'
 
-    # 2 - attempt to match an URN alias (most likely)
+    # 4 - attempt to match an URN alias (most likely)
     from azure.cli.command_modules.vm._actions import load_images_from_aliases_doc
-    images = load_images_from_aliases_doc()
+    images = load_images_from_aliases_doc(cmd.cli_ctx)
     matched = next((x for x in images if x['urnAlias'].lower() == namespace.image.lower()), None)
     if matched:
         namespace.os_publisher = matched['publisher']
@@ -175,54 +238,11 @@ def _parse_image_argument(namespace):
         namespace.os_version = matched['version']
         return 'urn'
 
-    # 3 - attempt to match an URN pattern
-    urn_match = re.match('([^:]*):([^:]*):([^:]*):([^:]*)', namespace.image)
-    if urn_match:
-        namespace.os_publisher = urn_match.group(1)
-        namespace.os_offer = urn_match.group(2)
-        namespace.os_sku = urn_match.group(3)
-        namespace.os_version = urn_match.group(4)
-        try:
-            compute_client = _compute_client_factory()
-            if namespace.os_version.lower() == 'latest':
-                top_one = compute_client.virtual_machine_images.list(namespace.location,
-                                                                     namespace.os_publisher,
-                                                                     namespace.os_offer,
-                                                                     namespace.os_sku,
-                                                                     top=1,
-                                                                     orderby='name desc')
-                if not top_one:
-                    raise CLIError("Can't resolve the vesion of '{}'".format(namespace.image))
-
-                image_version = top_one[0].name
-            else:
-                image_version = namespace.os_version
-
-            image = compute_client.virtual_machine_images.get(namespace.location,
-                                                              namespace.os_publisher,
-                                                              namespace.os_offer,
-                                                              namespace.os_sku,
-                                                              image_version)
-
-            # pylint: disable=no-member
-            if image.plan:
-                namespace.plan_name = image.plan.name
-                namespace.plan_product = image.plan.product
-                namespace.plan_publisher = image.plan.publisher
-        except CloudError as ex:
-            logger.warning("Querying the image of '%s' failed for an error '%s'. Configuring plan settings "
-                           "will be skipped", namespace.image, ex.message)
-        return 'urn'
-
-    # 4 - check if a fully-qualified ID (assumes it is an image ID)
-    if is_valid_resource_id(namespace.image):
-        return 'image_id'
-
     # 5 - check if an existing managed disk image resource
-    compute_client = _compute_client_factory()
+    compute_client = _compute_client_factory(cmd.cli_ctx)
     try:
         compute_client.images.get(namespace.resource_group_name, namespace.image)
-        namespace.image = _get_resource_id(namespace.image, namespace.resource_group_name,
+        namespace.image = _get_resource_id(cmd.cli_ctx, namespace.image, namespace.resource_group_name,
                                            'images', 'Microsoft.Compute')
         return 'image_id'
     except CloudError:
@@ -230,6 +250,30 @@ def _parse_image_argument(namespace):
         raise CLIError(err.format(namespace.image, [x['urnAlias'] for x in images]))
 
 
+def _get_image_plan_info_if_exists(cmd, namespace):
+    from msrestazure.azure_exceptions import CloudError
+    try:
+        compute_client = _compute_client_factory(cmd.cli_ctx)
+        if namespace.os_version.lower() == 'latest':
+            image_version = _get_latest_image_version(cmd.cli_ctx, namespace.location, namespace.os_publisher,
+                                                      namespace.os_offer, namespace.os_sku)
+        else:
+            image_version = namespace.os_version
+
+        image = compute_client.virtual_machine_images.get(namespace.location,
+                                                          namespace.os_publisher,
+                                                          namespace.os_offer,
+                                                          namespace.os_sku,
+                                                          image_version)
+
+        # pylint: disable=no-member
+        return image.plan
+    except CloudError as ex:
+        logger.warning("Querying the image of '%s' failed for an error '%s'. Configuring plan settings "
+                       "will be skipped", namespace.image, ex.message)
+
+
+# pylint: disable=inconsistent-return-statements
 def _get_storage_profile_description(profile):
     if profile == StorageProfile.SACustomImage:
         return 'create unmanaged OS disk created from generalized VHD'
@@ -252,9 +296,22 @@ def _validate_managed_disk_sku(sku):
         raise CLIError("invalid storage SKU '{}': allowed values: '{}'".format(sku, allowed_skus))
 
 
-# pylint: disable=too-many-branches, too-many-statements
-def _validate_vm_create_storage_profile(namespace, for_scale_set=False):
+def _validate_location(cmd, namespace, zone_info, size_info):
+    from ._vm_utils import list_sku_info
+    if not namespace.location:
+        get_default_location_from_resource_group(cmd, namespace)
+        if zone_info:
+            sku_infos = list_sku_info(cmd.cli_ctx, namespace.location)
+            temp = next((x for x in sku_infos if x.name.lower() == size_info.lower()), None)
+            if not temp or not [x for x in (temp.location_info or []) if x.zones]:
+                raise CLIError("{}'s location can't be used to create the VM/VMSS because availablity zone is not yet "
+                               "supported. Please use '--location' to specify a capable one. 'az vm list-skus' can be "
+                               "used to find such locations".format(namespace.resource_group_name))
 
+
+# pylint: disable=too-many-branches, too-many-statements
+def _validate_vm_create_storage_profile(cmd, namespace, for_scale_set=False):
+    from msrestazure.tools import parse_resource_id
     # use minimal parameters to resolve the expected storage profile
     if getattr(namespace, 'attach_os_disk', None) and not namespace.image:
         if namespace.use_unmanaged_disk:
@@ -264,7 +321,7 @@ def _validate_vm_create_storage_profile(namespace, for_scale_set=False):
             # STORAGE PROFILE #6
             namespace.storage_profile = StorageProfile.ManagedSpecializedOSDisk
     elif namespace.image and not getattr(namespace, 'attach_os_disk', None):
-        image_type = _parse_image_argument(namespace)
+        image_type = _parse_image_argument(cmd, namespace)
         if image_type == 'uri':
             # STORAGE PROFILE #2
             namespace.storage_profile = StorageProfile.SACustomImage
@@ -313,15 +370,15 @@ def _validate_vm_create_storage_profile(namespace, for_scale_set=False):
 
     elif namespace.storage_profile == StorageProfile.SAPirImage:
         required = ['image', 'use_unmanaged_disk']
-        forbidden = ['os_type', 'data_caching', 'attach_os_disk', 'data_disk_sizes_gb']
+        forbidden = ['os_type', 'attach_os_disk', 'data_disk_sizes_gb']
 
     elif namespace.storage_profile == StorageProfile.SACustomImage:
         required = ['image', 'os_type', 'use_unmanaged_disk']
-        forbidden = ['attach_os_disk', 'data_caching', 'data_disk_sizes_gb']
+        forbidden = ['attach_os_disk', 'data_disk_sizes_gb']
 
     elif namespace.storage_profile == StorageProfile.SASpecializedOSDisk:
         required = ['os_type', 'attach_os_disk', 'use_unmanaged_disk']
-        forbidden = ['os_disk_name', 'os_caching', 'data_caching', 'image', 'storage_account',
+        forbidden = ['os_disk_name', 'os_caching', 'image', 'storage_account',
                      'storage_container_name', 'data_disk_sizes_gb', 'storage_sku'] + auth_params
 
     else:
@@ -347,35 +404,45 @@ def _validate_vm_create_storage_profile(namespace, for_scale_set=False):
         namespace, required, forbidden,
         description='storage profile: {}:'.format(_get_storage_profile_description(namespace.storage_profile)))
 
+    image_data_disks = None
     if namespace.storage_profile == StorageProfile.ManagedCustomImage:
         # extract additional information from a managed custom image
         res = parse_resource_id(namespace.image)
-        compute_client = _compute_client_factory()
+        compute_client = _compute_client_factory(cmd.cli_ctx, subscription_id=res['subscription'])
         image_info = compute_client.images.get(res['resource_group'], res['name'])
         # pylint: disable=no-member
         namespace.os_type = image_info.storage_profile.os_disk.os_type.value
-        namespace.image_data_disks = image_info.storage_profile.data_disks
+        image_data_disks = image_info.storage_profile.data_disks
 
     elif namespace.storage_profile == StorageProfile.ManagedSpecializedOSDisk:
         # accept disk name or ID
         namespace.attach_os_disk = _get_resource_id(
-            namespace.attach_os_disk, namespace.resource_group_name, 'disks', 'Microsoft.Compute')
+            cmd.cli_ctx, namespace.attach_os_disk, namespace.resource_group_name, 'disks', 'Microsoft.Compute')
 
     if getattr(namespace, 'attach_data_disks', None):
         if not namespace.use_unmanaged_disk:
-            namespace.attach_data_disks = [_get_resource_id(d, namespace.resource_group_name, 'disks',
+            namespace.attach_data_disks = [_get_resource_id(cmd.cli_ctx, d, namespace.resource_group_name, 'disks',
                                                             'Microsoft.Compute') for d in namespace.attach_data_disks]
 
     if not namespace.os_type:
         namespace.os_type = 'windows' if 'windows' in namespace.os_offer.lower() else 'linux'
 
+    from ._vm_utils import normalize_disk_info
+    # attach_data_disks are not exposed yet for VMSS, so use 'getattr' to avoid crash
+    namespace.disk_info = normalize_disk_info(image_data_disks=image_data_disks,
+                                              data_disk_sizes_gb=namespace.data_disk_sizes_gb,
+                                              attach_data_disks=getattr(namespace, 'attach_data_disks', []),
+                                              storage_sku=namespace.storage_sku,
+                                              os_disk_caching=namespace.os_caching,
+                                              data_disk_cachings=namespace.data_caching)
 
-def _validate_vm_create_storage_account(namespace):
 
+def _validate_vm_create_storage_account(cmd, namespace):
+    from msrestazure.tools import parse_resource_id
     if namespace.storage_account:
         storage_id = parse_resource_id(namespace.storage_account)
         rg = storage_id.get('resource_group', namespace.resource_group_name)
-        if check_existence(storage_id['name'], rg, 'Microsoft.Storage', 'storageAccounts'):
+        if check_existence(cmd.cli_ctx, storage_id['name'], rg, 'Microsoft.Storage', 'storageAccounts'):
             # 1 - existing storage account specified
             namespace.storage_account_type = 'existing'
             logger.debug("using specified existing storage account '%s'", storage_id['name'])
@@ -386,7 +453,7 @@ def _validate_vm_create_storage_account(namespace):
     else:
         from azure.cli.core.profiles import ResourceType
         from azure.cli.core.commands.client_factory import get_mgmt_service_client
-        storage_client = get_mgmt_service_client(ResourceType.MGMT_STORAGE).storage_accounts
+        storage_client = get_mgmt_service_client(cmd.cli_ctx, ResourceType.MGMT_STORAGE).storage_accounts
 
         # find storage account in target resource group that matches the VM's location
         sku_tier = 'Premium' if 'Premium' in namespace.storage_sku else 'Standard'
@@ -405,18 +472,19 @@ def _validate_vm_create_storage_account(namespace):
             logger.debug('no suitable storage account found. One will be created.')
 
 
-def _validate_vm_create_availability_set(namespace):
+def _validate_vm_create_availability_set(cmd, namespace):
+    from msrestazure.tools import parse_resource_id, resource_id
     from azure.cli.core.commands.client_factory import get_subscription_id
     if namespace.availability_set:
         as_id = parse_resource_id(namespace.availability_set)
         name = as_id['name']
         rg = as_id.get('resource_group', namespace.resource_group_name)
 
-        if not check_existence(name, rg, 'Microsoft.Compute', 'availabilitySets'):
+        if not check_existence(cmd.cli_ctx, name, rg, 'Microsoft.Compute', 'availabilitySets'):
             raise CLIError("Availability set '{}' does not exist.".format(name))
 
         namespace.availability_set = resource_id(
-            subscription=get_subscription_id(),
+            subscription=get_subscription_id(cmd.cli_ctx),
             resource_group=rg,
             namespace='Microsoft.Compute',
             type='availabilitySets',
@@ -424,8 +492,8 @@ def _validate_vm_create_availability_set(namespace):
         logger.debug("adding to specified availability set '%s'", namespace.availability_set)
 
 
-def _validate_vm_vmss_create_vnet(namespace, for_scale_set=False):
-
+def _validate_vm_vmss_create_vnet(cmd, namespace, for_scale_set=False):
+    from msrestazure.tools import is_valid_resource_id
     vnet = namespace.vnet_name
     subnet = namespace.subnet
     rg = namespace.resource_group_name
@@ -436,7 +504,7 @@ def _validate_vm_vmss_create_vnet(namespace, for_scale_set=False):
         logger.debug('no subnet specified. Attempting to find an existing Vnet and subnet...')
 
         # if nothing specified, try to find an existing vnet and subnet in the target resource group
-        client = get_network_client().virtual_networks
+        client = get_network_client(cmd.cli_ctx).virtual_networks
 
         # find VNET in target resource group that matches the VM's location with a matching subnet
         for vnet_match in (v for v in client.list(rg) if v.location == location and v.subnets):
@@ -450,7 +518,8 @@ def _validate_vm_vmss_create_vnet(namespace, for_scale_set=False):
                     if s.name.lower() == 'gatewaysubnet':
                         return False
                     subnet_mask = s.address_prefix.split('/')[-1]
-                    return _subnet_capacity_check(subnet_mask, namespace.instance_count)
+                    return _subnet_capacity_check(subnet_mask, namespace.instance_count,
+                                                  not namespace.disable_overprovision)
 
                 result = next((s for s in vnet_match.subnets if _check_subnet(s)), None)
             if not result:
@@ -468,7 +537,7 @@ def _validate_vm_vmss_create_vnet(namespace, for_scale_set=False):
                            "--subnet SUBNET_NAME --vnet-name VNET_NAME")
 
         subnet_exists = \
-            check_existence(subnet, rg, 'Microsoft.Network', 'subnets', vnet, 'virtualNetworks')
+            check_existence(cmd.cli_ctx, subnet, rg, 'Microsoft.Network', 'subnets', vnet, 'virtualNetworks')
 
         if subnet_is_id and not subnet_exists:
             raise CLIError("Subnet '{}' does not exist.".format(subnet))
@@ -482,10 +551,80 @@ def _validate_vm_vmss_create_vnet(namespace, for_scale_set=False):
     logger.debug('no suitable subnet found. One will be created.')
 
 
-def _subnet_capacity_check(subnet_mask, vmss_instance_count):
+def _subnet_capacity_check(subnet_mask, vmss_instance_count, over_provision):
     mask = int(subnet_mask)
     # '2' are the reserved broadcasting addresses
-    return ((1 << (32 - mask)) - 2) > vmss_instance_count
+    # '*1.5' so we have enough leeway for over-provision
+    factor = 1.5 if over_provision else 1
+    return ((1 << (32 - mask)) - 2) > int(vmss_instance_count * factor)
+
+
+def _validate_vm_vmss_accelerated_networking(cli_ctx, namespace):
+    if namespace.accelerated_networking is None:
+        size = getattr(namespace, 'size', None) or getattr(namespace, 'vm_sku', None)
+        size = size.lower()
+
+        # to refresh the list, run 'az vm create --accelerated-networking --size Standard_DS1_v2' and
+        # get it from the error
+        aval_sizes = ['Standard_D3_v2', 'Standard_D12_v2', 'Standard_D3_v2_Promo', 'Standard_D12_v2_Promo',
+                      'Standard_DS3_v2', 'Standard_DS12_v2', 'Standard_DS13-4_v2', 'Standard_DS14-4_v2',
+                      'Standard_DS3_v2_Promo', 'Standard_DS12_v2_Promo', 'Standard_DS13-4_v2_Promo',
+                      'Standard_DS14-4_v2_Promo', 'Standard_F4', 'Standard_F4s', 'Standard_D8_v3', 'Standard_D8s_v3',
+                      'Standard_D32-8s_v3', 'Standard_E8_v3', 'Standard_E8s_v3', 'Standard_D3_v2_ABC',
+                      'Standard_D12_v2_ABC', 'Standard_F4_ABC', 'Standard_F8s_v2', 'Standard_D4_v2',
+                      'Standard_D13_v2', 'Standard_D4_v2_Promo', 'Standard_D13_v2_Promo', 'Standard_DS4_v2',
+                      'Standard_DS13_v2', 'Standard_DS14-8_v2', 'Standard_DS4_v2_Promo', 'Standard_DS13_v2_Promo',
+                      'Standard_DS14-8_v2_Promo', 'Standard_F8', 'Standard_F8s', 'Standard_M64-16ms',
+                      'Standard_D16_v3', 'Standard_D16s_v3', 'Standard_D32-16s_v3', 'Standard_D64-16s_v3',
+                      'Standard_E16_v3', 'Standard_E16s_v3', 'Standard_E32-16s_v3', 'Standard_D4_v2_ABC',
+                      'Standard_D13_v2_ABC', 'Standard_F8_ABC', 'Standard_F16s_v2', 'Standard_D5_v2',
+                      'Standard_D14_v2', 'Standard_D5_v2_Promo', 'Standard_D14_v2_Promo', 'Standard_DS5_v2',
+                      'Standard_DS14_v2', 'Standard_DS5_v2_Promo', 'Standard_DS14_v2_Promo', 'Standard_F16',
+                      'Standard_F16s', 'Standard_M64-32ms', 'Standard_M128-32ms', 'Standard_D32_v3',
+                      'Standard_D32s_v3', 'Standard_D64-32s_v3', 'Standard_E32_v3', 'Standard_E32s_v3',
+                      'Standard_E32-8s_v3', 'Standard_E32-16_v3', 'Standard_D5_v2_ABC', 'Standard_D14_v2_ABC',
+                      'Standard_F16_ABC', 'Standard_F32s_v2', 'Standard_D15_v2', 'Standard_D15_v2_Promo',
+                      'Standard_D15_v2_Nested', 'Standard_DS15_v2', 'Standard_DS15_v2_Promo',
+                      'Standard_DS15_v2_Nested', 'Standard_D40_v3', 'Standard_D40s_v3', 'Standard_D15_v2_ABC',
+                      'Standard_M64ms', 'Standard_M64s', 'Standard_M128-64ms', 'Standard_D64_v3', 'Standard_D64s_v3',
+                      'Standard_E64_v3', 'Standard_E64s_v3', 'Standard_E64-16s_v3', 'Standard_E64-32s_v3',
+                      'Standard_F64s_v2', 'Standard_F72s_v2', 'Standard_M128s', 'Standard_M128ms', 'Standard_L8s_v2',
+                      'Standard_L16s_v2', 'Standard_L32s_v2', 'Standard_L64s_v2', 'Standard_L96s_v2', 'SQLGL',
+                      'SQLGLCore', 'Standard_D4_v3', 'Standard_D4s_v3', 'Standard_D2_v2', 'Standard_DS2_v2',
+                      'Standard_E4_v3', 'Standard_E4s_v3', 'Standard_F2', 'Standard_F2s', 'Standard_F4s_v2',
+                      'Standard_D11_v2', 'Standard_DS11_v2', 'AZAP_Performance_ComputeV17C']
+        aval_sizes = [x.lower() for x in aval_sizes]
+        if size not in aval_sizes:
+            return
+
+        new_4core_sizes = ['Standard_D3_v2', 'Standard_D3_v2_Promo', 'Standard_D3_v2_ABC', 'Standard_DS3_v2',
+                           'Standard_DS3_v2_Promo', 'Standard_D12_v2', 'Standard_D12_v2_Promo', 'Standard_D12_v2_ABC',
+                           'Standard_DS12_v2', 'Standard_DS12_v2_Promo', 'Standard_F8s_v2', 'Standard_F4',
+                           'Standard_F4_ABC', 'Standard_F4s', 'Standard_E8_v3', 'Standard_E8s_v3', 'Standard_D8_v3',
+                           'Standard_D8s_v3']
+        new_4core_sizes = [x.lower() for x in new_4core_sizes]
+        if size not in new_4core_sizes:
+            compute_client = _compute_client_factory(cli_ctx)
+            sizes = compute_client.virtual_machine_sizes.list(namespace.location)
+            size_info = next((s for s in sizes if s.name.lower() == size), None)
+            if size_info is None or size_info.number_of_cores < 8:
+                return
+
+        # VMs need to be a supported image in the marketplace
+        # Ubuntu 16.04, SLES 12 SP3, RHEL 7.4, CentOS 7.4, CoreOS Linux, Debian "Stretch" with backports kernel
+        # Oracle Linux 7.4, Windows Server 2016, Windows Server 2012R2
+        publisher, offer, sku = namespace.os_publisher, namespace.os_offer, namespace.os_sku
+        if not publisher:
+            return
+        publisher, offer, sku = publisher.lower(), offer.lower(), sku.lower()
+        distros = [('canonical', 'UbuntuServer', '^16.04'), ('suse', 'sles', '^12-sp3'), ('redhat', 'rhel', '^7.4'),
+                   ('openlogic', 'centos', '^7.4'), ('coreos', 'coreos', None), ('credativ', 'debian', '-backports'),
+                   ('oracle', 'oracle-linux', '^7.4'), ('MicrosoftWindowsServer', 'WindowsServer', '^2016'),
+                   ('MicrosoftWindowsServer', 'WindowsServer', '^2012-R2')]
+        import re
+        for p, o, s in distros:
+            if p.lower() == publisher and (o is None or o.lower() == offer) and (s is None or re.match(s, sku, re.I)):
+                namespace.accelerated_networking = True
 
 
 def _validate_vmss_create_subnet(namespace):
@@ -494,7 +633,7 @@ def _validate_vmss_create_subnet(namespace):
             cidr = namespace.vnet_address_prefix.split('/', 1)[0]
             i = 0
             for i in range(24, 16, -1):
-                if _subnet_capacity_check(i, namespace.instance_count):
+                if _subnet_capacity_check(i, namespace.instance_count, not namespace.disable_overprovision):
                     break
             if i < 16:
                 err = "instance count '{}' is out of range of 2^16 subnet size'"
@@ -537,10 +676,10 @@ def _get_next_subnet_addr_suffix(vnet_cidr, subnet_cidr, new_mask):
                                         new_mask)
 
 
-def _validate_vm_create_nsg(namespace):
+def _validate_vm_create_nsg(cmd, namespace):
 
     if namespace.nsg:
-        if check_existence(namespace.nsg, namespace.resource_group_name,
+        if check_existence(cmd.cli_ctx, namespace.nsg, namespace.resource_group_name,
                            'Microsoft.Network', 'networkSecurityGroups'):
             namespace.nsg_type = 'existing'
             logger.debug("using specified NSG '%s'", namespace.nsg)
@@ -555,39 +694,49 @@ def _validate_vm_create_nsg(namespace):
         logger.debug('new NSG will be created')
 
 
-def _validate_vmss_create_nsg(namespace):
+def _validate_vmss_create_nsg(cmd, namespace):
     if namespace.nsg:
-        namespace.nsg = _get_resource_id(namespace.nsg, namespace.resource_group_name,
+        namespace.nsg = _get_resource_id(cmd.cli_ctx, namespace.nsg, namespace.resource_group_name,
                                          'networkSecurityGroups', 'Microsoft.Network')
 
 
-def _validate_vm_create_public_ip(namespace):
+def _validate_vm_vmss_create_public_ip(cmd, namespace):
     if namespace.public_ip_address:
-        if check_existence(namespace.public_ip_address, namespace.resource_group_name,
+        if check_existence(cmd.cli_ctx, namespace.public_ip_address, namespace.resource_group_name,
                            'Microsoft.Network', 'publicIPAddresses'):
-            namespace.public_ip_type = 'existing'
+            namespace.public_ip_address_type = 'existing'
             logger.debug("using existing specified public IP '%s'", namespace.public_ip_address)
         else:
-            namespace.public_ip_type = 'new'
+            namespace.public_ip_address_type = 'new'
             logger.debug("specified public IP '%s' not found. It will be created.", namespace.public_ip_address)
     elif namespace.public_ip_address == '':
-        namespace.public_ip_type = None
+        namespace.public_ip_address_type = None
         logger.debug('no public IP address will be used')
     elif namespace.public_ip_address is None:
-        namespace.public_ip_type = 'new'
+        namespace.public_ip_address_type = 'new'
         logger.debug('new public IP address will be created')
 
+    # Public-IP SKU is only exposed for VM. VMSS has no such needs so far
+    if getattr(namespace, 'public_ip_sku', None):
+        from azure.cli.core.profiles import ResourceType
+        PublicIPAddressSkuName, IPAllocationMethod = cmd.get_models('PublicIPAddressSkuName', 'IPAllocationMethod',
+                                                                    resource_type=ResourceType.MGMT_NETWORK)
+        if namespace.public_ip_sku == PublicIPAddressSkuName.standard.value:
+            if not namespace.public_ip_address_allocation:
+                namespace.public_ip_address_allocation = IPAllocationMethod.static.value
 
-def _validate_vmss_create_public_ip(namespace):
+
+def _validate_vmss_create_public_ip(cmd, namespace):
     if namespace.load_balancer_type is None and namespace.app_gateway_type is None:
         if namespace.public_ip_address:
             raise CLIError('--public-ip-address can only be used when creating a new load '
                            'balancer or application gateway frontend.')
         namespace.public_ip_address = ''
-    _validate_vm_create_public_ip(namespace)
+    _validate_vm_vmss_create_public_ip(cmd, namespace)
 
 
-def _validate_vm_create_nics(namespace):
+def _validate_vm_create_nics(cmd, namespace):
+    from msrestazure.tools import resource_id
     from azure.cli.core.commands.client_factory import get_subscription_id
     nics_value = namespace.nics
     nics = []
@@ -606,7 +755,7 @@ def _validate_vm_create_nics(namespace):
                                                  resource_group=namespace.resource_group_name,
                                                  namespace='Microsoft.Network',
                                                  type='networkInterfaces',
-                                                 subscription=get_subscription_id()),
+                                                 subscription=get_subscription_id(cmd.cli_ctx)),
             'properties': {
                 'primary': nics_value[0] == n
             }
@@ -614,7 +763,7 @@ def _validate_vm_create_nics(namespace):
 
     namespace.nics = nics
     namespace.nic_type = 'existing'
-    namespace.public_ip_type = None
+    namespace.public_ip_address_type = None
     logger.debug('existing NIC(s) will be used')
 
 
@@ -643,7 +792,7 @@ def _validate_vm_vmss_create_auth(namespace):
                 "incorrect usage for authentication-type 'password': "
                 "[--admin-username USERNAME] --admin-password PASSWORD")
 
-        from azure.cli.core.prompting import prompt_pass, NoTTYException
+        from knack.prompting import prompt_pass, NoTTYException
         try:
             if not namespace.admin_password:
                 namespace.admin_password = prompt_pass('Admin Password: ', confirm=True)
@@ -667,6 +816,7 @@ def _validate_vm_vmss_create_auth(namespace):
 
 
 def _validate_admin_username(username, os_type):
+    import re
     if not username:
         raise CLIError("admin user name can not be empty")
     is_linux = (os_type.lower() == 'linux')
@@ -692,6 +842,7 @@ def _validate_admin_username(username, os_type):
 
 
 def _validate_admin_password(password, os_type):
+    import re
     is_linux = (os_type.lower() == 'linux')
     max_length = 72 if is_linux else 123
     min_length = 12
@@ -737,23 +888,37 @@ def validate_ssh_key(namespace):
     namespace.ssh_key_value = content
 
 
-def _validate_vm_vmss_msi(namespace, from_set_command=False):
-    if from_set_command or namespace.assign_identity:
+def _validate_vm_vmss_msi(cmd, namespace, from_set_command=False):
+    if from_set_command or namespace.assign_identity is not None:
+        identities = namespace.assign_identity or []
+        from ._vm_utils import MSI_LOCAL_ID
+        for i, _ in enumerate(identities):
+            if identities[i] != MSI_LOCAL_ID:
+                identities[i] = _get_resource_id(cmd.cli_ctx, identities[i], namespace.resource_group_name,
+                                                 'userAssignedIdentities', 'Microsoft.ManagedIdentity')
         if not namespace.identity_scope and getattr(namespace.identity_role, 'is_default', None) is None:
             raise CLIError("usage error: '--role {}' is not applicable as the '--scope' is not provided".format(
                 namespace.identity_role))
-        # keep 'identity_role' for output as logical name is more readable
+        user_assigned_identities = [x for x in identities if x != MSI_LOCAL_ID]
+        if user_assigned_identities and not cmd.supported_api_version(min_api='2017-12-01'):
+            raise CLIError('usage error: user assigned identity is only available under profile '
+                           'with minimum Compute API version of 2017-12-01')
         if namespace.identity_scope:
-            setattr(namespace, 'identity_role_id', _resolve_role_id(namespace.identity_role, namespace.identity_scope))
+            if identities and MSI_LOCAL_ID not in identities:
+                raise CLIError("usage error: '--scope'/'--role' is only applicable when assign system identity")
+            # keep 'identity_role' for output as logical name is more readable
+            setattr(namespace, 'identity_role_id', _resolve_role_id(cmd.cli_ctx, namespace.identity_role,
+                                                                    namespace.identity_scope))
     elif namespace.identity_scope or getattr(namespace.identity_role, 'is_default', None) is None:
         raise CLIError('usage error: --assign-identity [--scope SCOPE] [--role ROLE]')
 
 
-def _resolve_role_id(role, scope):
+def _resolve_role_id(cli_ctx, role, scope):
+    import re
     import uuid
     from azure.cli.core.commands.client_factory import get_mgmt_service_client
     from azure.mgmt.authorization import AuthorizationManagementClient
-    client = get_mgmt_service_client(AuthorizationManagementClient).role_definitions
+    client = get_mgmt_service_client(cli_ctx, AuthorizationManagementClient).role_definitions
 
     role_id = None
     if re.match(r'/subscriptions/.+/providers/Microsoft.Authorization/roleDefinitions/',
@@ -778,37 +943,36 @@ def _resolve_role_id(role, scope):
     return role_id
 
 
-def process_vm_create_namespace(namespace):
-    get_default_location_from_resource_group(namespace)
-    _validate_vm_create_storage_profile(namespace)
+def process_vm_create_namespace(cmd, namespace):
+    validate_tags(namespace)
+    _validate_location(cmd, namespace, namespace.zone, namespace.size)
+    validate_asg_names_or_ids(cmd, namespace)
+    _validate_vm_create_storage_profile(cmd, namespace)
     if namespace.storage_profile in [StorageProfile.SACustomImage,
                                      StorageProfile.SAPirImage]:
-        _validate_vm_create_storage_account(namespace)
+        _validate_vm_create_storage_account(cmd, namespace)
 
-    _validate_vm_create_availability_set(namespace)
-    _validate_vm_vmss_create_vnet(namespace)
-    _validate_vm_create_nsg(namespace)
-    _validate_vm_create_public_ip(namespace)
-    _validate_vm_create_nics(namespace)
+    _validate_vm_create_availability_set(cmd, namespace)
+    _validate_vm_vmss_create_vnet(cmd, namespace)
+    _validate_vm_create_nsg(cmd, namespace)
+    _validate_vm_vmss_create_public_ip(cmd, namespace)
+    _validate_vm_create_nics(cmd, namespace)
+    _validate_vm_vmss_accelerated_networking(cmd.cli_ctx, namespace)
     _validate_vm_vmss_create_auth(namespace)
     if namespace.secrets:
         _validate_secrets(namespace.secrets, namespace.os_type)
     if namespace.license_type and namespace.os_type.lower() != 'windows':
         raise CLIError('usage error: --license-type is only applicable on Windows VM')
-    _validate_vm_vmss_msi(namespace)
-
+    _validate_vm_vmss_msi(cmd, namespace)
+    if namespace.boot_diagnostics_storage:
+        namespace.boot_diagnostics_storage = get_storage_blob_uri(cmd.cli_ctx, namespace.boot_diagnostics_storage)
 # endregion
 
+
 # region VMSS Create Validators
-
-
-def _get_vmss_create_instance_threshold():
-    return 100
-
-
-def _get_default_address_pool(resource_group, balancer_name, balancer_type):
+def _get_default_address_pool(cli_ctx, resource_group, balancer_name, balancer_type):
     option_name = '--backend-pool-name'
-    client = getattr(get_network_client(), balancer_type, None)
+    client = getattr(get_network_client(cli_ctx), balancer_type, None)
     if not client:
         raise CLIError('unrecognized balancer type: {}'.format(balancer_type))
 
@@ -823,36 +987,37 @@ def _get_default_address_pool(resource_group, balancer_name, balancer_type):
     return values[0]
 
 
-def _validate_vmss_create_load_balancer_or_app_gateway(namespace):
+def _validate_vmss_single_placement_group(namespace):
+    if namespace.platform_fault_domain_count is not None and namespace.zones is None:
+        raise CLIError('usage error: --platform-fault-domain-count COUNT --zones ZONES')
+    if namespace.zones or namespace.instance_count > 100:
+        if namespace.single_placement_group is None:
+            namespace.single_placement_group = False
+        elif namespace.single_placement_group:
+            raise CLIError("usage error: '--single-placement-group' should be turned off for zonal scale-sets or with"
+                           " 100+ instances")
 
-    INSTANCE_THRESHOLD = _get_vmss_create_instance_threshold()
 
-    # convert the single_placement_group to boolean for simpler logic beyond
-    if namespace.single_placement_group is None:
-        namespace.single_placement_group = namespace.instance_count <= INSTANCE_THRESHOLD
-    else:
-        namespace.single_placement_group = (namespace.single_placement_group == 'true')
-
-    if not namespace.single_placement_group and namespace.load_balancer:
-        raise CLIError(
-            '--load-balancer is not applicable when --single-placement-group is turned off.')
+def _validate_vmss_create_load_balancer_or_app_gateway(cmd, namespace):
+    from msrestazure.azure_exceptions import CloudError
+    from msrestazure.tools import parse_resource_id
+    from azure.cli.core.profiles import ResourceType
+    std_lb_is_available = cmd.supported_api_version(min_api='2017-08-01', resource_type=ResourceType.MGMT_NETWORK)
 
     if namespace.load_balancer and namespace.application_gateway:
         raise CLIError('incorrect usage: --load-balancer NAME_OR_ID | '
                        '--application-gateway NAME_OR_ID')
 
-    if namespace.instance_count > INSTANCE_THRESHOLD and namespace.load_balancer:
-        raise CLIError(
-            '--load-balancer cannot be used with --instance_count is > {}'.format(
-                INSTANCE_THRESHOLD))
-
     # Resolve the type of balancer (if any) being used
     balancer_type = 'None'
     if namespace.load_balancer is None and namespace.application_gateway is None:
-        # use defaulting rules to determine
-        balancer_type = 'loadBalancer' if namespace.instance_count <= INSTANCE_THRESHOLD \
-            else 'applicationGateway'
-        logger.debug("defaulting to '%s' because instance count <= %s", balancer_type, INSTANCE_THRESHOLD)
+        if std_lb_is_available:
+            balancer_type = 'loadBalancer'
+        else:  # needed for Stack profile 2017_03_09
+            balancer_type = 'loadBalancer' if namespace.single_placement_group is not False else 'applicationGateway'
+            logger.debug("W/o STD LB, defaulting to '%s' under because single placement group is disabled",
+                         balancer_type)
+
     elif namespace.load_balancer:
         balancer_type = 'loadBalancer'
     elif namespace.application_gateway:
@@ -861,7 +1026,7 @@ def _validate_vmss_create_load_balancer_or_app_gateway(namespace):
     if balancer_type == 'applicationGateway':
 
         if namespace.application_gateway:
-            client = get_network_client().application_gateways
+            client = get_network_client(cmd.cli_ctx).application_gateways
             try:
                 rg = parse_resource_id(namespace.application_gateway).get(
                     'resource_group', namespace.resource_group_name)
@@ -869,7 +1034,7 @@ def _validate_vmss_create_load_balancer_or_app_gateway(namespace):
                 client.get(rg, ag_name)
                 namespace.app_gateway_type = 'existing'
                 namespace.backend_pool_name = namespace.backend_pool_name or \
-                    _get_default_address_pool(rg, ag_name, 'application_gateways')
+                    _get_default_address_pool(cmd.cli_ctx, rg, ag_name, 'application_gateways')
                 logger.debug("using specified existing application gateway '%s'", namespace.application_gateway)
             except CloudError:
                 namespace.app_gateway_type = 'new'
@@ -903,17 +1068,17 @@ def _validate_vmss_create_load_balancer_or_app_gateway(namespace):
         if namespace.load_balancer:
             rg = parse_resource_id(namespace.load_balancer).get('resource_group', namespace.resource_group_name)
             lb_name = parse_resource_id(namespace.load_balancer)['name']
-            lb = get_network_lb(namespace.resource_group_name, lb_name)
+            lb = get_network_lb(cmd.cli_ctx, namespace.resource_group_name, lb_name)
             if lb:
                 namespace.load_balancer_type = 'existing'
                 namespace.backend_pool_name = namespace.backend_pool_name or \
-                    _get_default_address_pool(rg, lb_name, 'load_balancers')
+                    _get_default_address_pool(cmd.cli_ctx, rg, lb_name, 'load_balancers')
                 if not namespace.nat_pool_name:
                     if len(lb.inbound_nat_pools) > 1:
                         raise CLIError("Multiple possible values found for '{0}': {1}\nSpecify '{0}' explicitly.".format(  # pylint: disable=line-too-long
                             '--nat-pool-name', ', '.join([n.name for n in lb.inbound_nat_pools])))
                     elif not lb.inbound_nat_pools:  # Associated scaleset will be missing ssh/rdp, so warn here.
-                        logger.warning("No inbound nat pool was configured on '{}'".format(namespace.load_balancer))
+                        logger.warning("No inbound nat pool was configured on '%s'", namespace.load_balancer)
                     else:
                         namespace.nat_pool_name = lb.inbound_nat_pools[0].name
                 logger.debug("using specified existing load balancer '%s'", namespace.load_balancer)
@@ -927,31 +1092,57 @@ def _validate_vmss_create_load_balancer_or_app_gateway(namespace):
             namespace.load_balancer_type = 'new'
             logger.debug('new load balancer will be created')
 
+        if namespace.load_balancer_type == 'new' and namespace.single_placement_group is False and std_lb_is_available:
+            LBSkuName = cmd.get_models('LoadBalancerSkuName', resource_type=ResourceType.MGMT_NETWORK)
+            if namespace.load_balancer_sku is None:
+                namespace.load_balancer_sku = LBSkuName.standard.value
+                logger.debug("use Standard sku as single placement group is turned off")
+            elif namespace.load_balancer_sku == LBSkuName.basic.value:
+                if namespace.zones:
+                    err = "'Standard' load balancer is required for zonal scale-sets"
+                elif namespace.instance_count > 100:
+                    err = "'Standard' load balancer is required for scale-sets with 100+ instances"
+                else:
+                    err = "'Standard' load balancer is required because 'single placement group' is turned off"
 
-def get_network_client():
+                raise CLIError('usage error:{}'.format(err))
+
+
+def get_network_client(cli_ctx):
     from azure.cli.core.profiles import ResourceType
     from azure.cli.core.commands.client_factory import get_mgmt_service_client
-    return get_mgmt_service_client(ResourceType.MGMT_NETWORK)
+    return get_mgmt_service_client(cli_ctx, ResourceType.MGMT_NETWORK, api_version=get_target_network_api(cli_ctx))
 
 
-def get_network_lb(resource_group_name, lb_name):
-    network_client = get_network_client()
+def get_network_lb(cli_ctx, resource_group_name, lb_name):
+    from msrestazure.azure_exceptions import CloudError
+    network_client = get_network_client(cli_ctx)
     try:
         return network_client.load_balancers.get(resource_group_name, lb_name)
     except CloudError:
         return None
 
 
-def process_vmss_create_namespace(namespace):
-    get_default_location_from_resource_group(namespace)
-    _validate_vm_create_storage_profile(namespace, for_scale_set=True)
-    _validate_vm_vmss_create_vnet(namespace, for_scale_set=True)
-    _validate_vmss_create_load_balancer_or_app_gateway(namespace)
+def process_vmss_create_namespace(cmd, namespace):
+    validate_tags(namespace)
+    if namespace.vm_sku is None:
+        from azure.cli.core.cloud import AZURE_US_GOV_CLOUD
+        if cmd.cli_ctx.cloud.name != AZURE_US_GOV_CLOUD.name:
+            namespace.vm_sku = 'Standard_DS1_v2'
+        else:
+            namespace.vm_sku = 'Standard_D1_v2'
+    _validate_location(cmd, namespace, namespace.zones, namespace.vm_sku)
+    _validate_vm_create_storage_profile(cmd, namespace, for_scale_set=True)
+    _validate_vm_vmss_create_vnet(cmd, namespace, for_scale_set=True)
+
+    _validate_vmss_single_placement_group(namespace)
+    _validate_vmss_create_load_balancer_or_app_gateway(cmd, namespace)
     _validate_vmss_create_subnet(namespace)
-    _validate_vmss_create_public_ip(namespace)
-    _validate_vmss_create_nsg(namespace)
+    _validate_vmss_create_public_ip(cmd, namespace)
+    _validate_vmss_create_nsg(cmd, namespace)
+    _validate_vm_vmss_accelerated_networking(cmd.cli_ctx, namespace)
     _validate_vm_vmss_create_auth(namespace)
-    _validate_vm_vmss_msi(namespace)
+    _validate_vm_vmss_msi(cmd, namespace)
 
     if namespace.license_type and namespace.os_type.lower() != 'windows':
         raise CLIError('usage error: --license-type is only applicable on Windows VM scaleset')
@@ -959,34 +1150,51 @@ def process_vmss_create_namespace(namespace):
     if not namespace.public_ip_per_vm and namespace.vm_domain_name:
         raise CLIError('Usage error: --vm-domain-name can only be used when --public-ip-per-vm is enabled')
 
-
+    if namespace.eviction_policy and not namespace.priority:
+        raise CLIError('Usage error: --priority PRIORITY [--eviction-policy POLICY]')
 # endregion
 
+
 # region disk, snapshot, image validators
+def validate_vm_disk(cmd, namespace):
+    namespace.disk = _get_resource_id(cmd.cli_ctx, namespace.disk,
+                                      namespace.resource_group_name, 'disks', 'Microsoft.Compute')
 
 
-def validate_vm_disk(namespace):
-    namespace.disk = _get_resource_id(namespace.disk, namespace.resource_group_name, 'disks', 'Microsoft.Compute')
+def validate_vmss_disk(cmd, namespace):
+    if namespace.disk:
+        namespace.disk = _get_resource_id(cmd.cli_ctx, namespace.disk,
+                                          namespace.resource_group_name, 'disks', 'Microsoft.Compute')
+    if bool(namespace.disk) == bool(namespace.size_gb):
+        raise CLIError('usage error: --disk EXIST_DISK --instance-id ID | --size-gb GB')
+    elif bool(namespace.disk) != bool(namespace.instance_id):
+        raise CLIError('usage error: --disk EXIST_DISK --instance-id ID')
 
 
-def process_disk_or_snapshot_create_namespace(namespace):
+def process_disk_or_snapshot_create_namespace(cmd, namespace):
+    from msrestazure.azure_exceptions import CloudError
+    validate_tags(namespace)
     if namespace.source:
         usage_error = 'usage error: --source {SNAPSHOT | DISK} | --source VHD_BLOB_URI [--source-storage-account-id ID]'
         try:
-            namespace.source_blob_uri, namespace.source_disk, namespace.source_snapshot = _figure_out_storage_source(namespace.resource_group_name, namespace.source)  # pylint: disable=line-too-long
+            namespace.source_blob_uri, namespace.source_disk, namespace.source_snapshot = _figure_out_storage_source(
+                cmd.cli_ctx, namespace.resource_group_name, namespace.source)
             if not namespace.source_blob_uri and namespace.source_storage_account_id:
                 raise CLIError(usage_error)
         except CloudError:
             raise CLIError(usage_error)
 
 
-def process_image_create_namespace(namespace):
+def process_image_create_namespace(cmd, namespace):
+    from msrestazure.tools import parse_resource_id
+    from msrestazure.azure_exceptions import CloudError
+    validate_tags(namespace)
     try:
         # try capturing from VM, a most common scenario
-        compute_client = _compute_client_factory()
-        res_id = _get_resource_id(namespace.source, namespace.resource_group_name,
+        res_id = _get_resource_id(cmd.cli_ctx, namespace.source, namespace.resource_group_name,
                                   'virtualMachines', 'Microsoft.Compute')
         res = parse_resource_id(res_id)
+        compute_client = _compute_client_factory(cmd.cli_ctx, subscription_id=res['subscription'])
         vm_info = compute_client.virtual_machines.get(res['resource_group'], res['name'])
         # pylint: disable=no-member
         namespace.os_type = vm_info.storage_profile.os_disk.os_type.value
@@ -995,14 +1203,14 @@ def process_image_create_namespace(namespace):
             raise CLIError("'--data-disk-sources' is not allowed when capturing "
                            "images from virtual machines")
     except CloudError:
-        namespace.os_blob_uri, namespace.os_disk, namespace.os_snapshot = _figure_out_storage_source(namespace.resource_group_name, namespace.source)  # pylint: disable=line-too-long
+        namespace.os_blob_uri, namespace.os_disk, namespace.os_snapshot = _figure_out_storage_source(cmd.cli_ctx, namespace.resource_group_name, namespace.source)  # pylint: disable=line-too-long
         namespace.data_blob_uris = []
         namespace.data_disks = []
         namespace.data_snapshots = []
         if namespace.data_disk_sources:
             for data_disk_source in namespace.data_disk_sources:
                 source_blob_uri, source_disk, source_snapshot = _figure_out_storage_source(
-                    namespace.resource_group_name, data_disk_source)
+                    cmd.cli_ctx, namespace.resource_group_name, data_disk_source)
                 if source_blob_uri:
                     namespace.data_blob_uris.append(source_blob_uri)
                 if source_disk:
@@ -1014,18 +1222,19 @@ def process_image_create_namespace(namespace):
                            "please specify '--os-type OS_TYPE'")
 
 
-def _figure_out_storage_source(resource_group_name, source):
+def _figure_out_storage_source(cli_ctx, resource_group_name, source):
+    from msrestazure.azure_exceptions import CloudError
     source_blob_uri = None
     source_disk = None
     source_snapshot = None
-    if source.lower().endswith('.vhd'):
+    if urlparse(source).scheme:  # a uri?
         source_blob_uri = source
     elif '/disks/' in source.lower():
         source_disk = source
     elif '/snapshots/' in source.lower():
         source_snapshot = source
     else:
-        compute_client = _compute_client_factory()
+        compute_client = _compute_client_factory(cli_ctx)
         # pylint: disable=no-member
         try:
             info = compute_client.snapshots.get(resource_group_name, source)
@@ -1037,8 +1246,8 @@ def _figure_out_storage_source(resource_group_name, source):
     return (source_blob_uri, source_disk, source_snapshot)
 
 
-def process_disk_encryption_namespace(namespace):
-    namespace.disk_encryption_keyvault = _get_resource_id(namespace.disk_encryption_keyvault,
+def process_disk_encryption_namespace(cmd, namespace):
+    namespace.disk_encryption_keyvault = _get_resource_id(cmd.cli_ctx, namespace.disk_encryption_keyvault,
                                                           namespace.resource_group_name,
                                                           'vaults', 'Microsoft.KeyVault')
 
@@ -1046,11 +1255,28 @@ def process_disk_encryption_namespace(namespace):
         if not namespace.key_encryption_key:
             raise CLIError("Incorrect usage '--key-encryption-keyvault': "
                            "'--key-encryption-key' is required")
-        namespace.key_encryption_keyvault = _get_resource_id(namespace.key_encryption_keyvault,
+        namespace.key_encryption_keyvault = _get_resource_id(cmd.cli_ctx, namespace.key_encryption_keyvault,
                                                              namespace.resource_group_name,
                                                              'vaults', 'Microsoft.KeyVault')
 
 
-def process_assign_identity_namespace(namespace):
-    _validate_vm_vmss_msi(namespace, from_set_command=True)
+def process_assign_identity_namespace(cmd, namespace):
+    _validate_vm_vmss_msi(cmd, namespace, from_set_command=True)
+
+
+def process_remove_identity_namespace(cmd, namespace):
+    if namespace.identities:
+        from ._vm_utils import MSI_LOCAL_ID
+        for i in range(len(namespace.identities)):
+            if namespace.identities[i] != MSI_LOCAL_ID:
+                namespace.identities[i] = _get_resource_id(cmd.cli_ctx, namespace.identities[i],
+                                                           namespace.resource_group_name,
+                                                           'userAssignedIdentities',
+                                                           'Microsoft.ManagedIdentity')
+
+
+# TODO move to its own command module https://github.com/Azure/azure-cli/issues/5105
+def process_msi_namespace(cmd, namespace):
+    get_default_location_from_resource_group(cmd, namespace)
+    validate_tags(namespace)
 # endregion

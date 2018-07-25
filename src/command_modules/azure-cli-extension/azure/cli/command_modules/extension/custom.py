@@ -8,28 +8,37 @@ import tempfile
 import shutil
 import zipfile
 import traceback
+import hashlib
 from subprocess import check_output, STDOUT, CalledProcessError
+from six.moves.urllib.parse import urlparse  # pylint: disable=import-error
+from collections import OrderedDict
 
 import requests
 from wheel.install import WHEEL_INFO_RE
+from pkg_resources import parse_version
 
-from six.moves.urllib.parse import urlparse  # pylint: disable=import-error
+from knack.log import get_logger
 
 from azure.cli.core.util import CLIError
 from azure.cli.core.extension import (extension_exists, get_extension_path, get_extensions,
-                                      get_extension, ext_compat_with_cli,
+                                      get_extension, ext_compat_with_cli, EXT_METADATA_ISPREVIEW,
                                       WheelExtension, ExtensionNotInstalledException)
-import azure.cli.core.azlogging as azlogging
+from azure.cli.core.telemetry import set_extension_management_detail
 
 from ._homebrew_patch import HomebrewPipPatch
+from ._index import get_index_extensions
+from ._resolve import resolve_from_index, NoExtensionCandidatesError
 
-
-logger = azlogging.get_az_logger(__name__)
+logger = get_logger(__name__)
 
 OUT_KEY_NAME = 'name'
 OUT_KEY_VERSION = 'version'
 OUT_KEY_TYPE = 'extensionType'
 OUT_KEY_METADATA = 'metadata'
+
+IS_WINDOWS = sys.platform.lower() in ['windows', 'win32']
+LIST_FILE_PATH = os.path.join(os.sep, 'etc', 'apt', 'sources.list.d', 'azure-cli.list')
+LSB_RELEASE_FILE = os.path.join(os.sep, 'etc', 'lsb-release')
 
 
 def _run_pip(pip_exec_args):
@@ -47,8 +56,9 @@ def _run_pip(pip_exec_args):
 
 
 def _whl_download_from_url(url_parse_result, ext_file):
+    from azure.cli.core.util import should_disable_connection_verify
     url = url_parse_result.geturl()
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, verify=(not should_disable_connection_verify()))
     if r.status_code != 200:
         raise CLIError("Request to {} failed with {}".format(url, r.status_code))
     with open(ext_file, 'wb') as f:
@@ -84,13 +94,16 @@ def _validate_whl_extension(ext_file):
     _validate_whl_cli_compat(azext_metadata)
 
 
-def _add_whl_ext(source):  # pylint: disable=too-many-statements
+def _add_whl_ext(source, ext_sha256=None, pip_extra_index_urls=None, pip_proxy=None):  # pylint: disable=too-many-statements
+    if not source.endswith('.whl'):
+        raise ValueError('Unknown extension type. Only Python wheels are supported.')
     url_parse_result = urlparse(source)
     is_url = (url_parse_result.scheme == 'http' or url_parse_result.scheme == 'https')
     logger.debug('Extension source is url? %s', is_url)
     whl_filename = os.path.basename(url_parse_result.path) if is_url else os.path.basename(source)
     parsed_filename = WHEEL_INFO_RE(whl_filename)
-    extension_name = parsed_filename.groupdict().get('name') if parsed_filename else None
+    # Extension names can have - but .whl format changes it to _ (PEP 0427). Undo this.
+    extension_name = parsed_filename.groupdict().get('name').replace('_', '-') if parsed_filename else None
     if not extension_name:
         raise CLIError('Unable to determine extension name from {}. Is the file name correct?'.format(source))
     if extension_exists(extension_name):
@@ -112,7 +125,16 @@ def _add_whl_ext(source):  # pylint: disable=too-many-statements
         if not os.path.isfile(ext_file):
             raise CLIError("File {} not found.".format(source))
     # Validate the extension
-    logger.debug('Validating the extension {}'.format(ext_file))
+    logger.debug('Validating the extension %s', ext_file)
+    if ext_sha256:
+        valid_checksum, computed_checksum = is_valid_sha256sum(ext_file, ext_sha256)
+        if valid_checksum:
+            logger.debug("Checksum of %s is OK", ext_file)
+        else:
+            logger.debug("Invalid checksum for %s. Expected '%s', computed '%s'.",
+                         ext_file, ext_sha256, computed_checksum)
+            raise CLIError("The checksum of the extension does not match the expected value. "
+                           "Use --debug for more information.")
     try:
         _validate_whl_extension(ext_file)
     except AssertionError:
@@ -120,10 +142,19 @@ def _add_whl_ext(source):  # pylint: disable=too-many-statements
         raise CLIError('The extension is invalid. Use --debug for more information.')
     except CLIError as e:
         raise e
-    logger.debug('Validation successful on {}'.format(ext_file))
+    logger.debug('Validation successful on %s', ext_file)
+    # Check for distro consistency
+    check_distro_consistency()
     # Install with pip
     extension_path = get_extension_path(extension_name)
     pip_args = ['install', '--target', extension_path, ext_file]
+
+    if pip_proxy:
+        pip_args = pip_args + ['--proxy', pip_proxy]
+    if pip_extra_index_urls:
+        for extra_index_url in pip_extra_index_urls:
+            pip_args = pip_args + ['--extra-index-url', extra_index_url]
+
     logger.debug('Executing pip with args: %s', pip_args)
     with HomebrewPipPatch():
         pip_status_code = _run_pip(pip_args)
@@ -138,17 +169,58 @@ def _add_whl_ext(source):  # pylint: disable=too-many-statements
     logger.debug('Saved the whl to %s', dst)
 
 
-def add_extension(source):
-    if source.endswith('.whl'):
-        _add_whl_ext(source)
-    else:
-        raise ValueError('Unknown extension type. Only Python wheels are supported.')
+def is_valid_sha256sum(a_file, expected_sum):
+    sha256 = hashlib.sha256()
+    with open(a_file, 'rb') as f:
+        sha256.update(f.read())
+    computed_hash = sha256.hexdigest()
+    return expected_sum == computed_hash, computed_hash
+
+
+def _augment_telemetry_with_ext_info(extension_name):
+    # The extension must be available before calling this otherwise we can't get the version from metadata
+    if not extension_name:
+        return
+    try:
+        ext = get_extension(extension_name)
+        ext_version = ext.version
+        set_extension_management_detail(extension_name, ext_version)
+    except Exception:  # nopa pylint: disable=broad-except
+        # Don't error on telemetry
+        pass
+
+
+def add_extension(source=None, extension_name=None, index_url=None, yes=None,  # pylint: disable=unused-argument
+                  pip_extra_index_urls=None, pip_proxy=None):
+    ext_sha256 = None
+    if extension_name:
+        if extension_exists(extension_name):
+            raise CLIError('The extension {} already exists.'.format(extension_name))
+        try:
+            source, ext_sha256 = resolve_from_index(extension_name, index_url=index_url)
+        except NoExtensionCandidatesError as err:
+            logger.debug(err)
+            raise CLIError("No matching extensions for '{}'. Use --debug for more information.".format(extension_name))
+    _add_whl_ext(source, ext_sha256=ext_sha256, pip_extra_index_urls=pip_extra_index_urls, pip_proxy=pip_proxy)
+    _augment_telemetry_with_ext_info(extension_name)
+    try:
+        if extension_name and get_extension(extension_name).preview:
+            logger.warning("The installed extension '%s' is in preview.", extension_name)
+    except ExtensionNotInstalledException:
+        pass
 
 
 def remove_extension(extension_name):
+    def log_err(func, path, exc_info):
+        logger.debug("Error occurred attempting to delete item from the extension '%s'.", extension_name)
+        logger.debug("%s: %s - %s", func, path, exc_info)
+
     try:
+        # Get the extension and it will raise an error if it doesn't exist
         get_extension(extension_name)
-        shutil.rmtree(get_extension_path(extension_name))
+        # We call this just before we remove the extension so we can get the metadata before it is gone
+        _augment_telemetry_with_ext_info(extension_name)
+        shutil.rmtree(get_extension_path(extension_name), onerror=log_err)
     except ExtensionNotInstalledException as e:
         raise CLIError(e)
 
@@ -167,3 +239,109 @@ def show_extension(extension_name):
                 OUT_KEY_METADATA: extension.metadata}
     except ExtensionNotInstalledException as e:
         raise CLIError(e)
+
+
+def update_extension(extension_name, index_url=None, pip_extra_index_urls=None, pip_proxy=None):
+    try:
+        ext = get_extension(extension_name)
+        cur_version = ext.get_version()
+        try:
+            download_url, ext_sha256 = resolve_from_index(extension_name, cur_version=cur_version, index_url=index_url)
+        except NoExtensionCandidatesError as err:
+            logger.debug(err)
+            raise CLIError("No updates available for '{}'. Use --debug for more information.".format(extension_name))
+        # Copy current version of extension to tmp directory in case we need to restore it after a failed install.
+        backup_dir = os.path.join(tempfile.mkdtemp(), extension_name)
+        extension_path = get_extension_path(extension_name)
+        logger.debug('Backing up the current extension: %s to %s', extension_path, backup_dir)
+        shutil.copytree(extension_path, backup_dir)
+        # Remove current version of the extension
+        shutil.rmtree(extension_path)
+        # Install newer version
+        try:
+            _add_whl_ext(download_url, ext_sha256=ext_sha256,
+                         pip_extra_index_urls=pip_extra_index_urls, pip_proxy=pip_proxy)
+            logger.debug('Deleting backup of old extension at %s', backup_dir)
+            shutil.rmtree(backup_dir)
+            # This gets the metadata for the extension *after* the update
+            _augment_telemetry_with_ext_info(extension_name)
+        except Exception as err:
+            logger.error('An error occurred whilst updating.')
+            logger.error(err)
+            logger.debug('Copying %s to %s', backup_dir, extension_path)
+            shutil.copytree(backup_dir, extension_path)
+            raise CLIError('Failed to update. Rolled {} back to {}.'.format(extension_name, cur_version))
+    except ExtensionNotInstalledException as e:
+        raise CLIError(e)
+
+
+def list_available_extensions(index_url=None, show_details=False):
+    index_data = get_index_extensions(index_url=index_url)
+    if show_details:
+        return index_data
+    installed_extensions = get_extensions()
+    installed_extension_names = [e.name for e in installed_extensions]
+    results = []
+    for name, items in OrderedDict(sorted(index_data.items())).items():
+        # exclude extensions/versions incompatible with current CLI version
+        items = [item for item in items if ext_compat_with_cli(item['metadata'])[0]]
+        if not items:
+            continue
+
+        latest = max(items, key=lambda c: parse_version(c['metadata']['version']))
+        installed = False
+        if name in installed_extension_names:
+            installed = True
+            ext_version = get_extension(name).version
+            if ext_version and parse_version(latest['metadata']['version']) > parse_version(ext_version):
+                installed = str(True) + ' (upgrade available)'
+        results.append({
+            'name': name,
+            'version': latest['metadata']['version'],
+            'summary': latest['metadata']['summary'],
+            'preview': latest['metadata'].get(EXT_METADATA_ISPREVIEW, False),
+            'installed': installed
+        })
+    return results
+
+
+def get_lsb_release():
+    try:
+        with open(LSB_RELEASE_FILE, 'r') as lr:
+            lsb = lr.readlines()
+            desc = lsb[2]
+            desc_split = desc.split('=')
+            rel = desc_split[1]
+            return rel.strip()
+    except Exception:  # pylint: disable=broad-except
+        return None
+
+
+def check_distro_consistency():
+    if IS_WINDOWS:
+        return
+
+    try:
+        logger.debug('Linux distro check: Reading from: %s', LIST_FILE_PATH)
+
+        with open(LIST_FILE_PATH, 'r') as list_file:
+            package_source = list_file.read()
+            stored_linux_dist_name = package_source.split(" ")[3]
+            logger.debug('Linux distro check: Found in list file: %s', stored_linux_dist_name)
+            current_linux_dist_name = get_lsb_release()
+            logger.debug('Linux distro check: Reported by API: %s', current_linux_dist_name)
+
+    except Exception as err:  # pylint: disable=broad-except
+        current_linux_dist_name = None
+        stored_linux_dist_name = None
+        logger.debug('Linux distro check: An error occurred while checking '
+                     'linux distribution version source list consistency.')
+        logger.debug(err)
+
+    if current_linux_dist_name != stored_linux_dist_name:
+        logger.debug("Linux distro check: Mismatch distribution "
+                     "name in %s file", LIST_FILE_PATH)
+        logger.debug("Linux distro check: If command fails, install the appropriate package "
+                     "for your distribution or change the above file accordingly.")
+        logger.debug("Linux distro check: %s has '%s', current distro is '%s'",
+                     LIST_FILE_PATH, stored_linux_dist_name, current_linux_dist_name)

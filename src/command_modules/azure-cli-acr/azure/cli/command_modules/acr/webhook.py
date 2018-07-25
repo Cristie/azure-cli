@@ -3,102 +3,80 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-from azure.mgmt.containerregistry.v2017_06_01_preview.models import (
+from azure.cli.core.util import CLIError
+
+from azure.mgmt.containerregistry.v2018_02_01_preview.models import (
     WebhookCreateParameters,
     WebhookUpdateParameters
 )
 
-from ._constants import WEBHOOK_API_VERSION
-from ._factory import get_acr_service_client
 from ._utils import (
     get_resource_group_name_by_registry_name,
-    managed_registry_validation
+    validate_managed_registry
 )
 
 
-WEBHOOKS_NOT_SUPPORTED = 'Webhooks are not supported for registries in Basic SKU.'
+WEBHOOKS_NOT_SUPPORTED = 'Webhooks are only supported for managed registries.'
 
 
-def acr_webhook_list(registry_name, resource_group_name=None):
-    """Lists all the webhooks for the specified container registry."
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+def acr_webhook_list(cmd, client, registry_name, resource_group_name=None):
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.list(resource_group_name, registry_name)
 
 
-def acr_webhook_create(webhook_name,
+def acr_webhook_create(cmd,
+                       client,
+                       webhook_name,
                        uri,
                        actions,
                        registry_name,
+                       location=None,
                        resource_group_name=None,
                        headers=None,
                        status='enabled',
                        scope=None,
                        tags=None):
-    """Creates a webhook for a container registry.
-    :param str webhook_name: The name of webhook
-    :param str uri: The service URI for the webhook to post notifications
-    :param str actions: The list of actions that trigger the webhook to post notifications
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    :param str headers: Custom headers that will be added to the webhook notifications
-    :param str status: Indicates whether the webhook is enabled
-    :param str scope: The scope of repositories where the event can be triggered
-    """
-    arm_registry, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    location = arm_registry.location
+    registry, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
 
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
-    return client.create(
-        resource_group_name,
-        registry_name,
-        webhook_name,
-        WebhookCreateParameters(
-            location=location,
-            service_uri=uri,
-            actions=actions,
-            custom_headers=headers,
-            status=status,
-            scope=scope,
-            tags=tags
+    from msrest.exceptions import ValidationError
+    try:
+        return client.create(
+            resource_group_name,
+            registry_name,
+            webhook_name,
+            WebhookCreateParameters(
+                location=location or registry.location,
+                service_uri=uri,
+                actions=actions,
+                custom_headers=headers,
+                status=status,
+                scope=scope,
+                tags=tags
+            )
         )
-    )
+    except ValidationError as e:
+        raise CLIError(e)
 
 
-def acr_webhook_delete(webhook_name,
+def acr_webhook_delete(cmd,
+                       client,
+                       webhook_name,
                        registry_name,
                        resource_group_name=None):
-    """Deletes a webhook from a container registry.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.delete(resource_group_name, registry_name, webhook_name)
 
 
-def acr_webhook_show(webhook_name,
+def acr_webhook_show(cmd,
+                     client,
+                     webhook_name,
                      registry_name,
                      resource_group_name=None):
-    """Gets the properties of the specified webhook.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.get(resource_group_name, registry_name, webhook_name)
 
 
@@ -136,63 +114,42 @@ def acr_webhook_update_get(client):  # pylint: disable=unused-argument
     return WebhookUpdateParameters()
 
 
-def acr_webhook_update_set(client,
+def acr_webhook_update_set(cmd,
+                           client,
                            webhook_name,
                            registry_name,
                            resource_group_name=None,
                            parameters=None):
-    """Sets the properties of the specified webhook.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    :param WebhookUpdateParameters parameters: The webhook update parameters object
-    """
     resource_group_name = get_resource_group_name_by_registry_name(
-        registry_name, resource_group_name)
-
+        cmd.cli_ctx, registry_name, resource_group_name)
     return client.update(resource_group_name, registry_name, webhook_name, parameters)
 
 
-def acr_webhook_get_config(webhook_name,
+def acr_webhook_get_config(cmd,
+                           client,
+                           webhook_name,
                            registry_name,
                            resource_group_name=None):
-    """Gets the configuration of service URI and custom headers for the webhook.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.get_callback_config(resource_group_name, registry_name, webhook_name)
 
 
-def acr_webhook_list_events(webhook_name,
+def acr_webhook_list_events(cmd,
+                            client,
+                            webhook_name,
                             registry_name,
                             resource_group_name=None):
-    """Lists recent events for the specified webhook.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.list_events(resource_group_name, registry_name, webhook_name)
 
 
-def acr_webhook_ping(webhook_name,
+def acr_webhook_ping(cmd,
+                     client,
+                     webhook_name,
                      registry_name,
                      resource_group_name=None):
-    """Triggers a ping event to be sent to the webhook.
-    :param str webhook_name: The name of webhook
-    :param str registry_name: The name of container registry
-    :param str resource_group_name: The name of resource group
-    """
-    _, resource_group_name = managed_registry_validation(
-        registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
-    client = get_acr_service_client(WEBHOOK_API_VERSION).webhooks
-
+    _, resource_group_name = validate_managed_registry(
+        cmd.cli_ctx, registry_name, resource_group_name, WEBHOOKS_NOT_SUPPORTED)
     return client.ping(resource_group_name, registry_name, webhook_name)

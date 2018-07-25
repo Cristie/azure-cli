@@ -2,6 +2,102 @@
 
 Release History
 ===============
+
+2.0.42
+++++++
+* Minor fixes
+
+2.0.41
+++++++
+* Minor fixes
+
+2.0.40
+++++++
+* Minor fixes
+
+2.0.39
+++++++
+* MSI packaging change
+
+2.0.38
+++++++
+* Minor fixes
+
+2.0.37
+++++++
+* Minor fixes
+
+2.0.36
+++++++
+* Minor fixes
+
+2.0.35
+++++++
+* Minor fixes
+
+2.0.34
+++++++
+* Minor fixes
+
+2.0.33
+++++++
+* Minor fixes
+
+2.0.32
+++++++
+* Minor fixes
+
+2.0.31
+++++++
+* Minor fixes
+
+2.0.30
+++++++
+* Minor fixes
+
+2.0.29
+++++++
+* Minor fixes
+
+2.0.28
+++++++
+* Bug fix for 'ValueError: field 6 out of range (need a 48-bit value)' - https://github.com/Azure/azure-cli/issues/5184
+
+2.0.27
+++++++
+* Minor fixes
+
+2.0.26
+++++++
+* Minor fixes
+
+2.0.25
+++++++
+* Minor fixes
+
+2.0.24
+++++++
+* Minor fixes
+
+2.0.23
+++++++
+* Minor fixes
+
+2.0.22
+++++++
+* Remove `az component` commands. Use `az extension` instead. `az component` has been deprecated for several months now.
+
+2.0.21
+++++++
+* Minor fixes
+
+2.0.20
+++++++
+
+2.0.19 (2017-10-09)
++++++++++++++++++++
+* no changes
+
 2.0.18 (2017-09-22)
 +++++++++++++++++++
 * no changes

@@ -12,8 +12,8 @@ if [ -z $version ]; then
 fi
 
 if [ -z $version ]; then
-    echo 'Missing version string'
-    exit 1
+    echo 'Use utc timestamp as version'
+    version=`date -u '+%Y%m%d%H%M%S'`
 fi
 
 echo "Replace with version: $version"
@@ -22,17 +22,17 @@ platform=`uname`
 
 for each in $(find src -name __init__.py); do
     if [ "$platform" == "Darwin" ]; then
-        sed -i "" "s/^__version__ = [\"']\(.*\)+dev[\"']/__version__ = \"\1+dev.$version\"/" $each
+        sed -i "" "s/^__version__ = [\"']\(.*\)[\"']/__version__ = \"\1.dev$version\"/" $each
     else
-        sed -i "s/^__version__ = [\"']\(.*\)+dev[\"']/__version__ = \"\1+dev.$version\"/" $each
+        sed -i "s/^__version__ = [\"']\(.*\)[\"']/__version__ = \"\1.dev$version\"/" $each
     fi
 done
 
 for each in $(find src -name setup.py); do
     if [ "$platform" == "Darwin" ]; then
-        sed -i "" "s/^VERSION = [\"']\(.*\)+dev[\"']/VERSION = \"\1+dev.$version\"/" $each
+        sed -i "" "s/^VERSION = [\"']\(.*\)[\"']/VERSION = \"\1.dev$version\"/" $each
     else
-        sed -i "s/^VERSION = [\"']\(.*\)+dev[\"']/VERSION = \"\1+dev.$version\"/" $each
+        sed -i "s/^VERSION = [\"']\(.*\)[\"']/VERSION = \"\1.dev$version\"/" $each
     fi
 done
 

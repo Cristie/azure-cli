@@ -2,6 +2,61 @@
 
 Release History
 ===============
+
+0.2.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+
+0.1.22
+++++++
+* Minor fixes.
+
+0.1.21
+++++++
+
+* Adds support for creating Basic Tier IoT Hubs.
+* Updates to Azure SDK 0.5.0
+
+0.1.20
+++++++
+
+* Minor fixes to compat with msrest 0.4.28
+
+0.1.19
+++++++
+
+* `sdist` is now compatible with wheel 0.31.0
+
+0.1.18
+++++++
+* Support Autorest 3.0 based SDKs
+
+0.1.17
+++++++
+* iot dps access policy create/update: Fixes issue where the command would occasionally return a 'not found' error on success. Added `--no-wait` support.
+* iot dps linked-hub create/update: Fixes issue where the command would occasionally return a 'not found' error on success. Added `--no-wait` support.
+* iot hub create: Allow specifying numbers of partitions during creation.
+* Minor fixes.
+
+0.1.16
+++++++
+* Added support for device provisioning service
+* Added deprecation messages in commands and command help.
+* Added IoT run once check to warn users about the availability of the IoT Extension.
+
+0.1.15
+++++++
+* Minor fixes.
+
+0.1.14
+++++++
+* Adds support for certificate authorities (CA) and certificate chains.
+* Minor fixes.
+
+0.1.13
+++++++
+* minor fixes
+
 0.1.12 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

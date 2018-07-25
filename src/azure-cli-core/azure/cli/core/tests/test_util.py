@@ -5,54 +5,18 @@
 
 # pylint: disable=line-too-long
 from collections import namedtuple
+import sys
 import unittest
+import mock
 import tempfile
+from datetime import date, time, datetime
 
 from azure.cli.core.util import \
-    (get_file_json, todict, to_snake_case, truncate_text, shell_safe_json_parse, b64_to_hex,
-     hash_string, random_string)
+    (get_file_json, truncate_text, shell_safe_json_parse, b64_to_hex, hash_string, random_string,
+     open_page_in_browser, can_launch_browser)
 
 
 class TestUtils(unittest.TestCase):
-
-    def test_application_todict_none(self):
-        the_input = None
-        actual = todict(the_input)
-        expected = None
-        self.assertEqual(actual, expected)
-
-    def test_application_todict_dict_empty(self):
-        the_input = {}
-        actual = todict(the_input)
-        expected = {}
-        self.assertEqual(actual, expected)
-
-    def test_application_todict_dict(self):
-        the_input = {'a': 'b'}
-        actual = todict(the_input)
-        expected = {'a': 'b'}
-        self.assertEqual(actual, expected)
-
-    def test_application_todict_list(self):
-        the_input = [{'a': 'b'}]
-        actual = todict(the_input)
-        expected = [{'a': 'b'}]
-        self.assertEqual(actual, expected)
-
-    def test_application_todict_obj(self):
-        MyObject = namedtuple('MyObject', 'a b')
-        the_input = MyObject('x', 'y')
-        actual = todict(the_input)
-        expected = {'a': 'x', 'b': 'y'}
-        self.assertEqual(actual, expected)
-
-    def test_application_todict_dict_with_obj(self):
-        MyObject = namedtuple('MyObject', 'a b')
-        mo = MyObject('x', 'y')
-        the_input = {'a': mo}
-        actual = todict(the_input)
-        expected = {'a': {'a': 'x', 'b': 'y'}}
-        self.assertEqual(actual, expected)
 
     def test_load_json_from_file(self):
         _, pathname = tempfile.mkstemp()
@@ -72,24 +36,6 @@ class TestUtils(unittest.TestCase):
             except Exception as ex:  # pylint: disable=broad-except
                 self.assertTrue(str(ex).find(
                     'contains error: Expecting value: line 1 column 1 (char 0)'))
-
-    def test_to_snake_case_from_camel(self):
-        the_input = 'thisIsCamelCase'
-        expected = 'this_is_camel_case'
-        actual = to_snake_case(the_input)
-        self.assertEqual(expected, actual)
-
-    def test_to_snake_case_empty(self):
-        the_input = ''
-        expected = ''
-        actual = to_snake_case(the_input)
-        self.assertEqual(expected, actual)
-
-    def test_to_snake_case_already_snake(self):
-        the_input = 'this_is_snake_cased'
-        expected = 'this_is_snake_cased'
-        actual = to_snake_case(the_input)
-        self.assertEqual(expected, actual)
 
     def test_truncate_text(self):
         expected = 'stri [...]'
@@ -173,6 +119,57 @@ class TestUtils(unittest.TestCase):
 
         # Test force_lower
         _run_test(16, True)
+
+    @mock.patch('webbrowser.open', autospec=True)
+    @mock.patch('subprocess.Popen', autospec=True)
+    def test_open_page_in_browser(self, sunprocess_open_mock, webbrowser_open_mock):
+        platform = sys.platform.lower()
+        open_page_in_browser('http://foo')
+        if platform == 'darwin':
+            sunprocess_open_mock.assert_called_once_with(['open', 'http://foo'])
+        else:
+            webbrowser_open_mock.assert_called_once_with('http://foo', 2)
+
+    @mock.patch('azure.cli.core.util._get_platform_info', autospec=True)
+    @mock.patch('webbrowser.get', autospec=True)
+    def test_can_launch_browser(self, webbrowser_get_mock, get_platform_mock):
+        # WSL is always fine
+        get_platform_mock.return_value = ('linux', '4.4.0-17134-microsoft')
+        result = can_launch_browser()
+        self.assertTrue(result)
+
+        # windows is always fine
+        get_platform_mock.return_value = ('windows', '10')
+        result = can_launch_browser()
+        self.assertTrue(result)
+
+        # osx is always fine
+        get_platform_mock.return_value = ('darwin', '10')
+        result = can_launch_browser()
+        self.assertTrue(result)
+
+        # now tests linux
+        with mock.patch('os.environ', autospec=True) as env_mock:
+            # when no GUI, return false
+            get_platform_mock.return_value = ('linux', '4.15.0-1014-azure')
+            env_mock.get.return_value = None
+            result = can_launch_browser()
+            self.assertFalse(result)
+
+            # when there is gui, and browser is a good one, return True
+            browser_mock = mock.MagicMock()
+            browser_mock.name = 'goodone'
+            env_mock.get.return_value = 'foo'
+            result = can_launch_browser()
+            self.assertTrue(result)
+
+            # when there is gui, but the browser is text mode, return False
+            browser_mock = mock.MagicMock()
+            browser_mock.name = 'www-browser'
+            webbrowser_get_mock.return_value = browser_mock
+            env_mock.get.return_value = 'foo'
+            result = can_launch_browser()
+            self.assertFalse(result)
 
 
 class TestBase64ToHex(unittest.TestCase):

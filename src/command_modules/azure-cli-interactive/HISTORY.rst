@@ -2,6 +2,88 @@
 
 Release History
 ===============
+
+0.3.26
+++++++
+* Minor fixes
+
+0.3.25
+++++++
+* Update PyYAML dependency to 4.2b4
+
+0.3.24
+++++++
+* Minor fixes
+
+0.3.23
+++++++
+* Minor fixes
+
+0.3.22
+++++++
+* Fix dependency versions.
+
+0.3.21
+++++++
+* Mute logging from parser for completions.
+* Made interactive more resistant to stale/corrupted help caches.
+
+0.3.20
+++++++
+* Allow interactive completers to function with positional arguments.
+* More user-friendly output when users type '\'.
+* Fix completions for parameters with no help.
+* Fix descriptions for command-groups.
+
+0.3.19
+++++++
+* Stops completions upon unrecognized commands.
+* Add event hooks before and after command subtree is created.
+* Allow completions for --ids parameters.
+* `sdist` is now compatible with wheel 0.31.0
+
+0.3.18
+++++++
+* Completions kick in as soon as command table loading is done.
+* Fix bug with using `--style` parameter.
+* Interactive lexer instantiated after command table dump if missing.
+* Improvements to completer support.
+
+0.3.17
+++++++
+* Persist history across different sessions
+* Fixed history while in scope
+* Updates to interactive telemetry
+* Fixed progress meter for long running operations
+* Completions more robust to command table exceptions
+
+0.3.16
+++++++
+* Fix issue where user is prompted to login when using interactive mode in Cloud Shell.
+* Fixed regression with missing parameter completions.
+
+0.3.15
+++++++
+* Fixed issue where command option completions no longer appeared.
+
+0.3.14
+++++++
+* Clean up unused test files
+
+0.3.13
+++++++
+* Fix issue where interactive would not start on Python 2.
+* Fix errors on start up
+* Fix some commands not running in interactive mode
+
+0.3.12
+++++++
+* Update for CLI core changes.
+
+0.3.11
+++++++
+* minor fixes
+
 0.3.10 (2017-09-22)
 +++++++++++++++++++
 * minor fixes

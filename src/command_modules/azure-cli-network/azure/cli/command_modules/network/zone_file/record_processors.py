@@ -49,8 +49,28 @@ def _quote_field(data, field):
     if data is None:
         return None
 
-    data[field] = '"%s"' % data[field]
-    data[field] = data[field].replace(";", "\;")
+    # embedded quotes require escaping - but only if not escaped already
+    # note that semi-colons do not need escaping here since we are putting it
+    # inside of a quoted string
+    fieldBuf = ""
+    escape = False
+    for c in data[field]:
+        if c == '"':
+            fieldBuf += '\\"'
+            escape = False
+        elif c == '\\':
+            if escape:
+                fieldBuf += '\\\\'
+                escape = False
+            else:
+                escape = True
+        else:
+            if escape:
+                fieldBuf += '\\'
+            fieldBuf += c
+            escape = False
+
+    data[field] = '"%s"' % fieldBuf
 
     return data
 
@@ -82,6 +102,10 @@ def process_a(io, data, name, print_name=False):
 
 def process_aaaa(io, data, name, print_name=False):
     return process_rr(io, data, 'AAAA', 'ip', name, print_name)
+
+
+def process_caa(io, data, name, print_name=False):
+    process_rr(io, _quote_field(data, 'value'), 'CAA', ['flags', 'tag', 'value'], name, print_name)
 
 
 def process_cname(io, data, name, print_name=False):

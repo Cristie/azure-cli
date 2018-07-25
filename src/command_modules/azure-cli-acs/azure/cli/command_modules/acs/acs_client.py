@@ -14,8 +14,8 @@ import paramiko.agent
 from sshtunnel import SSHTunnelForwarder
 from scp import SCPClient
 
-from azure.cli.core.util import CLIError
-from azure.cli.core.prompting import prompt_pass
+from knack.prompting import prompt_pass
+from knack.util import CLIError
 
 
 def _load_key(key_filename):
@@ -58,11 +58,15 @@ def secure_copy(user, host, src, dest, key_filename=None, allow_agent=True):
     keys = _load_keys(key_filename, allow_agent)
     pkey = keys[0]
     ssh = paramiko.SSHClient()
-    conf = paramiko.SSHConfig()
+    proxy = None
     ssh_config_file = os.path.expanduser("~/.ssh/config")
-    conf.parse(open(ssh_config_file))
-    host_config = conf.lookup(host)
-    proxy = paramiko.ProxyCommand(host_config['proxycommand'])
+    if os.path.isfile(ssh_config_file):
+        conf = paramiko.SSHConfig()
+        with open(ssh_config_file) as f:
+            conf.parse(f)
+        host_config = conf.lookup(host)
+        if 'proxycommand' in host_config:
+            proxy = paramiko.ProxyCommand(host_config['proxycommand'])
     ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(host, username=user, pkey=pkey, sock=proxy)
@@ -144,7 +148,7 @@ class ACSClient(object):
             t = threading.Thread(target=ACSClient._run_cmd, args=(self, command))
             t.daemon = True
             t.start()
-            return
+            return None
 
         return self._run_cmd(command)
 

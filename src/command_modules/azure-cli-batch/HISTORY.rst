@@ -3,7 +3,67 @@
 Release History
 ===============
 
-3.1.5 (Unreleased)
+3.3.0
++++++
+* BREAKING CHANGE: 'show' commands log error message and fail with exit code of 3 upon a missing resource.
+* Fix bug on using token credential on cloud shell mode
+* When use json file as input parameter, deserialize content with case insentive.
+
+3.2.6
++++++
+* Minor fixes
+
+3.2.5
++++++
+* Minor fixes
+
+3.2.4
++++++
+* Remove azure-batch-extensions dependency.
+
+3.2.3
++++++
+* Fixed bug in Pool list table formatting: issue #4378.
+
+3.2.2
++++++
+* Updated to Batch SDK 4.1.2.
+
+3.2.1
++++++
+* Minor fixes.
+
+3.2.0
++++++
+* Updated to Batch SDK 4.1.1.
+* `sdist` is now compatible with wheel 0.31.0
+
+3.1.11
+++++++
+* Support Autorest 3.0 based SDKs
+
+3.1.10
+++++++
+* Minor fixes
+
+3.1.9
++++++
+* minor fixes
+
+3.1.8
++++++
+* Converted to Knack framework
+* `az batch login` command now returns authentication details.
+
+3.1.7
++++++
+* Fixed bug in pool create command when a resource ID was used with the --image flag.
+
+3.1.6
++++++
+* minor fixes
+
+3.1.5 (2017-10-09)
 ++++++++++++++++++
 * Updated to Batch SDK 4.0.0.
 * Updated --image option of VirtualMachineConfiguration to support ARM image references in addition to publish:offer:sku:version.

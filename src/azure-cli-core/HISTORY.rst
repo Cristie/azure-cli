@@ -2,17 +2,134 @@
 
 Release History
 ===============
-(unreleased)
+
+2.0.42
+++++++
+* login: support browser based login in WSL bash window
+* Adds `--force-string` flag to all generic update commands.
+
+2.0.41
+++++++
+* Minor fixes
+* Update PyYAML dependency to 4.2b4
+
+2.0.40
+++++++
+* authentication: support authorization code flow for interactive login
+
+2.0.39
+++++++
+* MSI packaging change
+
+2.0.38
+++++++
+* Add global support for `--subscription` to most commands.
+
+2.0.37
+++++++
+* Minor fixes
+
+2.0.36
+++++++
+* Minor fixes
+
+2.0.35
+++++++
+* Added method of registering `show` commands to fail with exit code of 3.
+
+2.0.34
+++++++
+* core: support cross tenant resource referencing
+* Improve telemetry upload reliability
+  1. Remove retry. Once failed stop uploading.
+  2. Update the process start configuration to prevent upload process from blocking the CLI process.
+
+2.0.33
+++++++
+* core: ignore FileNotFoundError error on expanding `@`
+
+2.0.32
+++++++
+* auth: fix a unhandled exception when retrieve secrets from a service principal account with cert
+* auth: improve the logic of detecting msi based account
+* Added limited support for positional arguments.
+* Fix issue where `--query` could not be used with `--ids`. [#5591](https://github.com/Azure/azure-cli/issues/5591)
+* Improves piping scenarios from commands when using `--ids`. Supports `-o tsv` with a query specified or `-o json`
+  without specifying a query.
+* Display command suggestions on error if users have typo in their commands
+* More friendly error when users type `az ''`
+* Support custom resource types for command modules and extensions
+
+2.0.31
+++++++
+* Allow other sources to add additional tab completion choices via event hook
+* `sdist` is now compatible with wheel 0.31.0
+
+2.0.30
+++++++
+* Show message for extensions marked as preview on -h.
+
+2.0.29
+++++++
+* Support Autorest 3.0 based SDKs
+* Support mechanism for a command module to suppress the loading of particular extensions.
+
+2.0.28
+++++++
+* Fix issue that required extension to use `client_arg_name` keyword argument. This is no longer necessary.
+* Allow extensions to send telemetry with custom instrumentation key
+* Enable HTTP logging with --debug
+
+2.0.27
+++++++
+* auth: key on both subscription id and name on msi login
+* Add events module in core for EVENT_INVOKER_PRE_CMD_TBL_TRUNCATE
+
+2.0.26
+++++++
+* Support raw token retrival in MSI context
+* Remove polling indicator string after finishing LRO on Windows cmd.exe
+* Warning that appears when using a configured default has been changed to an INFO level entry. Use --verbose to see.
+* Add a progress indicator for wait command
+
+2.0.25
+++++++
+* Minor fixes
+
+2.0.24
+++++++
+* Minor fixes
+
+2.0.23
+++++++
+* Minor fixes
+
+2.0.22
+++++++
+* Minor fixes
+* Modified the AZURE_US_GOV_CLOUD's AAD authority endpoint from login.microsoftonline.com to login.microsoftonline.us.
+* Introduce SDKProfile to support azure-mgmt-compute 3.1.0rc1 and integrated profile support.
+* Improve telemetry: remove inifinity retry loop from SynchronousSender.
+
+2.0.21
+++++++
+* Minor fixes
+
+2.0.20
+++++++
+* 2017-03-09-profile is updated to consume MGMT_STORAGE API version '2016-01-01'
+
+2.0.19
+++++++
+* skipped version to align package versions with azure-cli
+
+2.0.18 (2017-10-09)
 +++++++++++++++++++
 * Azure Stack: handle adfs authority url with a trailing slash
 
 2.0.17 (2017-09-22)
 +++++++++++++++++++
 * minor fixes
-
-unreleased
-++++++++++
-
 * Address problems with 'AzureCloud' clouds.config file in concurrent scenarios
 * More user-friendly handling of invalid cloud configurations
 * `availability-set create`: Fixed issue where this command would not work on Azure Stack.
@@ -76,7 +193,7 @@ unreleased
 
 2.0.5 (2017-05-05)
 ++++++++++++++++++
-* core: capture exceptions caused by unregistered provider and auto-register it   
+* core: capture exceptions caused by unregistered provider and auto-register it
 * login: avoid the bad exception when the user account has no subscription and no tenants
 * perf: persist adal token cache in memory till process exits (#2603)
 
